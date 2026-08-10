@@ -9,8 +9,16 @@
 # schedule as a safety net if the dispatch token is missing or a delivery is
 # lost, and manually.
 #
-# SETUP: if cm_mcp_contracts is private, add a token that can read its releases
-# as CONTRACTS_READ_TOKEN. For a public contracts repo, GITHUB_TOKEN is enough.
+# SETUP, both one-time:
+#
+#   1. Settings -> Actions -> General -> Workflow permissions: tick "Allow GitHub
+#      Actions to create and approve pull requests". The `pull-requests: write`
+#      permission below is necessary but NOT sufficient -- GitHub gates PR
+#      creation by Actions behind that repo setting, which ships off. Without it
+#      every step here succeeds and only the last one fails, with
+#      "GitHub Actions is not permitted to create or approve pull requests".
+#   2. If cm_mcp_contracts is private, add a token that can read its releases as
+#      CONTRACTS_READ_TOKEN. For a public contracts repo, GITHUB_TOKEN is enough.
 name: consume-registry
 
 on:
