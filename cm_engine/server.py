@@ -18,7 +18,7 @@ from fastmcp.server.dependencies import get_context
 from fastmcp.tools import FunctionTool
 from mcp.types import ToolAnnotations
 
-from cm_engine.config import MCP_HOST, MCP_PORT
+from cm_engine.config import DEV_OFFLINE, MCP_HOST, MCP_PORT
 from cm_engine.credentials import Principal, default_principal
 from cm_engine.engine.executor import Executor
 from cm_engine.events import StageEvent
@@ -176,6 +176,15 @@ def build_server() -> FastMCP:
                 "path": str(registry.source.path),
                 "origin": registry.source.origin,
             },
+            # Which upstream the calls go to. A separate axis from `source`
+            # entirely -- a contract read from a working tree can be executed
+            # against a live store, and the approved artifact can be executed
+            # against the mock. Conflating the two is confusing enough when the
+            # only clue is an env var named DEV_OFFLINE.
+            #
+            # A flag, not a host: `binding` and everything host-shaped stays
+            # inside the engine.
+            "runtime": {"devOffline": DEV_OFFLINE},
         }
 
     @mcp.tool
