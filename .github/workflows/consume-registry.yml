@@ -86,24 +86,36 @@ jobs:
           CM_REGISTRY_FILE: candidate/registry.json
         run: uv run --extra dev pytest -q tests/test_mcp_surface.py
 
+      - name: Is the content actually new?
+        id: diff
+        # `contentHash` covers the contracts, their versions and their hashes --
+        # not `generatedAt` or `sourceCommit`, which change on every publish. So a
+        # commit upstream that touched a script and no contract does not arrive
+        # here as a PR to review.
+        run: |
+          NEW=$(jq -r '.contentHash // empty' candidate/registry.json)
+          OLD=$(jq -r '.contentHash // empty' registry/registry.json 2>/dev/null || true)
+
+          if [ -n "$NEW" ] && [ "$NEW" = "$OLD" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Same contracts, same hashes (${NEW:0:12}). Only the build stamp moved."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "content ${OLD:-none} -> ${NEW:-none}"
+          fi
+
       - name: Pin the new registry
+        if: steps.diff.outputs.changed == 'true'
         # Replaced wholesale rather than merged, so a contract deleted upstream
         # disappears here too. The legacy single-file artifact goes with it.
         run: |
           rm -rf registry registry.generated.json
           mv candidate registry
-          rm -f registry.tar.gz
 
-      - name: Has anything actually changed?
-        id: diff
-        run: |
-          if [ -z "$(git status --porcelain -- registry registry.generated.json)" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Pinned registry is already up to date."
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            git status --short -- registry registry.generated.json
-          fi
+      - name: Clear the scratch copy
+        # Whether or not anything was pinned; create-pull-request commits the tree.
+        if: always()
+        run: rm -rf candidate registry.tar.gz
 
       - name: Open a PR
         if: steps.diff.outputs.changed == 'true'
