@@ -14,6 +14,11 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Lint
+        # Unused code, commented-out code, and the small decay that accumulates.
+        # Cheap to keep green now; expensive to reintroduce later.
+        run: uvx ruff check .
+
       - name: Tests
         # Pinned fixtures only -- there is no contracts checkout in CI, and
         # depending on one would re-couple the repositories.

@@ -18,7 +18,7 @@ placeholder token here would only break the demo for anyone without a store.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -160,7 +160,7 @@ async def create_category(request: Request) -> JSONResponse:
         "status": body.get("status", "active"),
         "sort_order": len(_CATEGORIES) + 1,
         "image": None,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     return _envelope(created, status=201)
 

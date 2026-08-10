@@ -102,8 +102,8 @@ def test_the_registry_is_not_empty():
 async def test_every_contract_is_exposed_as_an_mcp_tool():
     async with Client(mcp) as client:
         names = {t.name for t in await client.list_tools()}
-    assert CONTRACT_TOOLS <= names
-    assert META_TOOLS <= names
+    assert names >= CONTRACT_TOOLS
+    assert names >= META_TOOLS
 
 
 async def test_every_tool_publishes_its_schema_hints_and_annotations():

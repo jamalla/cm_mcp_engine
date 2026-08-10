@@ -70,7 +70,9 @@ class EnvCredentials(CredentialProvider):
     A multi-tenant deployment replaces this class, not its callers.
     """
 
-    def resolve(self, upstream: Upstream, principal: Principal) -> str:
+    def resolve(self, upstream: Upstream, principal: Principal) -> str:  # noqa: ARG002
+        # principal is ignored on purpose: one process, one token. It stays in the
+        # signature because the interface is what a multi-tenant provider replaces.
         return resolve_token(upstream)
 
 

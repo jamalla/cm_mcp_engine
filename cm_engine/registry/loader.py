@@ -1,10 +1,9 @@
 """The registry: approved contracts -> a catalog of executable tools.
 
-Contracts are authored, reviewed, and schema-validated in cm_mcp_contracts.
-This engine consumes the result, from either:
-
-  * a **contracts directory** -- a sibling checkout during development, or
-  * a **registry.generated.json** -- the artifact that repo publishes on merge.
+Contracts are authored, reviewed, and schema-validated in cm_mcp_contracts. This
+engine consumes the result *from its own repository*: the registry that repo
+publishes, which consume-registry verifies and a human merges here. It does not
+read another repository's working tree -- see resolve_contract_source.
 
 Full JSON-Schema conformance is deliberately *not* re-checked here. That is the
 contracts gate's job and duplicating the rulebook would give us two versions of
@@ -24,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from cm_engine.config import ContractSource, UPSTREAMS, resolve_contract_source, resolve_upstream
+from cm_engine.config import UPSTREAMS, ContractSource, resolve_contract_source, resolve_upstream
 
 SUPPORTED_BINDINGS = {"http", "none"}
 SUPPORTED_KINDS = {"single-tool"}
@@ -366,8 +365,9 @@ def _documents(source: ContractSource) -> list[tuple[str, dict[str, Any]]]:
         if not source.path.is_file():
             raise FileNotFoundError(
                 f"no registry at {source.path} (source: {source.origin}). "
-                "Point CM_CONTRACTS_DIR at a cm_mcp_contracts checkout, or run "
-                "the consume-registry workflow to pin one."
+                "Run the consume-registry workflow to pin one, or build a registry "
+                "locally (python scripts/build_registry.py in cm_mcp_contracts) and "
+                "point CM_REGISTRY_FILE at its registry.json."
             )
         payload = json.loads(source.path.read_text(encoding="utf-8"))
         entries = payload.get("contracts", [])

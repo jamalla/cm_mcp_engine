@@ -76,7 +76,7 @@ async def run_module(
         stdout, stderr = await asyncio.wait_for(
             process.communicate(payload), timeout=timeout_seconds
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         process.kill()
         await process.wait()
         return SandboxResult(

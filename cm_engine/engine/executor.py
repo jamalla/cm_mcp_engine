@@ -21,7 +21,7 @@ from cm_engine.config import resolve_upstream, upstream_base_url
 from cm_engine.credentials import Principal, default_principal, provider
 from cm_engine.engine import codemode
 from cm_engine.engine.sandbox import run_module
-from cm_engine.events import Emitter, EmitSink
+from cm_engine.events import EmitSink, Emitter
 from cm_engine.registry.loader import Registry, ToolEntry
 
 # Signs approval tokens so an "approved" write has to come from a proposal this

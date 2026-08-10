@@ -26,14 +26,16 @@ PINNED_REGISTRY = REPO_ROOT / "registry" / "registry.json"
 # present, so an engine that has not taken a new pin PR yet keeps serving.
 LEGACY_REGISTRY = REPO_ROOT / "registry.generated.json"
 
-# Sibling checkout, for working in the container layout during development.
-SIBLING_CONTRACTS = REPO_ROOT.parent / "cm_mcp_contracts" / "contracts"
+# There is deliberately no path to a cm_mcp_contracts checkout here. This engine
+# reads its own repository: the registry the pipeline published and a human merged.
+# It used to auto-detect a sibling checkout, which was convenient and wrong -- the
+# contracts repo's working tree contains whatever someone is editing, on whatever
+# branch, including files that never passed the gate, and an engine that reads it
+# is serving unapproved tools while reporting a tool count that looks legitimate.
 
 MCP_HOST = os.environ.get("MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.environ.get("MCP_PORT", "8765"))
 MOCK_API_PORT = int(os.environ.get("MOCK_API_PORT", "8787"))
-
-MCP_URL = f"http://{MCP_HOST}:{MCP_PORT}/mcp"
 
 DEV_OFFLINE = os.environ.get("DEV_OFFLINE", "1") == "1"
 
@@ -61,7 +63,6 @@ class Upstream:
     # Where DEV_OFFLINE sends the calls instead. The mock speaks the same
     # envelope, so the generated code is identical either way.
     mock_base_url: str | None = None
-    docs: str = ""
 
 
 UPSTREAMS: dict[str, Upstream] = {
@@ -71,7 +72,6 @@ UPSTREAMS: dict[str, Upstream] = {
         token_env="SALLA_ACCESS_TOKEN",
         auth_scheme="bearer",
         mock_base_url=f"http://127.0.0.1:{MOCK_API_PORT}/admin/v2",
-        docs="https://docs.salla.dev/",
     ),
 }
 
@@ -99,23 +99,31 @@ class ContractSource:
 
 
 def resolve_contract_source() -> ContractSource:
-    """Pick a contracts source, most explicit first.
+    """Where this engine reads contracts from.
 
-    The engine and the contracts live in separate repositories, so there is no
-    single right answer -- a developer wants their sibling checkout, CI wants a
-    downloaded artifact, and a deployed engine wants the version pinned into
-    this repo. Rather than guess, each of those gets its own rung.
+    **The rule: the engine only ever reads its own repository.** What it serves is
+    the registry the pipeline published, verified, and a human merged here -- not
+    another repository's working tree, and never by default.
+
+    Two explicit overrides remain, both requiring someone to set an environment
+    variable, both reported by `list_contracts` and shown in the UI as unapproved:
+
+      1. CM_REGISTRY_FILE  -- a registry index, which is how CI verifies a
+         candidate before it is pinned, and how a developer runs against a registry
+         they built locally.
+      2. CM_CONTRACTS_DIR  -- a plain directory of contract files, with no index and
+         so no provenance and no hashes. This repo's own tests use it against
+         pinned fixtures. Pointing it at a contracts checkout works and is the
+         thing the rule exists to stop being the default: nothing in that directory
+         has necessarily passed the gate.
+
+    With neither set there is exactly one answer, and it lives in this repo.
     """
     if explicit := os.environ.get("CM_REGISTRY_FILE"):
         return ContractSource("registry-file", Path(explicit), "CM_REGISTRY_FILE")
 
     if explicit := os.environ.get("CM_CONTRACTS_DIR"):
-        return ContractSource("contracts-dir", Path(explicit), "CM_CONTRACTS_DIR")
-
-    if SIBLING_CONTRACTS.is_dir():
-        return ContractSource(
-            "contracts-dir", SIBLING_CONTRACTS, "sibling cm_mcp_contracts checkout"
-        )
+        return ContractSource("contracts-dir", Path(explicit), "CM_CONTRACTS_DIR (unapproved)")
 
     if LEGACY_REGISTRY.is_file() and not PINNED_REGISTRY.is_file():
         return ContractSource("registry-file", LEGACY_REGISTRY, "pinned registry (legacy layout)")

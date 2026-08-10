@@ -32,3 +32,18 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
 log_level = "WARNING"
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [".venv", "node_modules", "frontend", "dist"]
+
+[tool.ruff.lint]
+# F: unused imports and names. ERA: commented-out code. B/SIM/RET/C4/UP: the
+# small stuff that accumulates. Deliberately not the whole catalogue -- a lint
+# nobody can keep green stops being read.
+select = ["F", "E", "W", "I", "B", "SIM", "RET", "C4", "UP", "ERA", "ARG"]
+ignore = ["E501"]  # line length is reported by the formatter, not worth failing on
+
+[tool.ruff.lint.per-file-ignores]
+# A pytest fixture is "used" by being requested, which ARG cannot see.
+"tests/**" = ["ARG001", "ARG002"]

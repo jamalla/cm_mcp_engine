@@ -40,10 +40,6 @@ class CodeCache:
         path.write_text(source, encoding="utf-8")
         return path
 
-    def path_for(self, key: str) -> Path:
-        """Where the sandbox will find this tool's module."""
-        return self._path(key)
-
     def clear(self) -> None:
         self._memory.clear()
         if self._dir.exists():

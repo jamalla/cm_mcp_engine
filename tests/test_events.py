@@ -1,7 +1,7 @@
 """Stage events must survive the MCP notification round trip intact."""
 
 import pytest
-from fastmcp import Client, Context, FastMCP
+from fastmcp import Client, FastMCP
 from fastmcp.server.dependencies import get_context
 
 from cm_engine.events import Emitter, ListSink, StageEvent

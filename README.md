@@ -15,16 +15,38 @@ pwsh scripts/dev.ps1 -Stop
 
 ## Where contracts come from
 
-Most explicit wins, so a developer, CI, and a deployment each get the source they need:
+**The rule: this engine reads its own repository.** What it serves is
+`./registry/registry.json` — the registry the pipeline published, `consume-registry` verified, and a
+human merged here.
 
-| # | Source | For |
+It used to auto-detect a sibling `../cm_mcp_contracts/contracts` checkout, which was convenient and
+wrong. That directory holds whatever someone is editing, on whatever branch, including contracts that
+never passed the gate — so an engine reading it serves unapproved tools while reporting a tool count
+that looks perfectly legitimate. There is now no path to another repository in this one, and
+[tests/test_own_repo_only.py](tests/test_own_repo_only.py) fails if one comes back.
+
+Two overrides remain. Both take a deliberate environment variable, and both are reported as
+unapproved by `list_contracts` and shown in amber in the UI:
+
+| override | what it points at | for |
 |---|---|---|
-| 1 | `CM_REGISTRY_FILE` | an explicit registry artifact |
-| 2 | `CM_CONTRACTS_DIR` | an explicit contracts directory |
-| 3 | `../cm_mcp_contracts/contracts` | auto-detected sibling checkout — local development |
-| 4 | `./registry/registry.json` | the version pinned into this repo — deployment |
+| `CM_REGISTRY_FILE` | a registry index built elsewhere | CI verifying a candidate; iterating locally |
+| `CM_CONTRACTS_DIR` | a bare directory of contract files — no index, no hashes | this repo's own tests |
 
-The engine prints which one it resolved at startup and reports it from `list_contracts`, because a
+With neither set there is exactly one answer and it lives here. A fresh clone with no registry pinned
+yet fails with "no registry at …, run the consume-registry workflow to pin one" rather than quietly
+substituting whatever is nearby: serving nothing beats serving something unapproved.
+
+**To iterate on a contract locally**, build a registry from your contracts checkout and point the
+engine at it — same index-and-hashes shape the pipeline publishes, so local behaviour matches
+production:
+
+```bash
+cd ../cm_mcp_contracts && uv run python scripts/build_registry.py --out ../local-registry
+cd ../cm_mcp_engine && CM_REGISTRY_FILE=../local-registry/registry.json uv run python -m cm_engine.server
+```
+
+The engine prints which source it resolved at startup and reports it from `list_contracts`, because a
 catalog that looks wrong is almost always a source that is not what you assumed.
 
 `registry/` is absent until `consume-registry.yml` opens the first pin PR. That is the honest state
@@ -145,7 +167,7 @@ What it checks instead is the question the other repo cannot answer: **can this 
 
 ```bash
 uv run python scripts/check_registry.py registry/registry.json
-uv run python scripts/check_registry.py --contracts-dir ../cm_mcp_contracts/contracts
+uv run python scripts/check_registry.py --contracts-dir path/to/contract/files
 ```
 
 ```

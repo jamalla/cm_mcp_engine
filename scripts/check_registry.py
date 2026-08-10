@@ -11,7 +11,7 @@ pinning it, so an incompatible contract fails a workflow instead of a demo.
 
 Usage:
     python scripts/check_registry.py registry.generated.json
-    python scripts/check_registry.py --contracts-dir ../cm_mcp_contracts/contracts
+    python scripts/check_registry.py --contracts-dir path/to/contract/files
 """
 
 from __future__ import annotations

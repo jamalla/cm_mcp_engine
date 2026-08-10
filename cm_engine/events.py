@@ -4,9 +4,6 @@ The executor emits these as it works rather than returning one final blob. It
 never knows how they travel: under FastMCP the sink forwards to
 `ctx.info(type, extra=payload)` and they ride MCP log notifications to the BFF;
 in tests the sink is a list.
-
-The package is named mcp_engine, not mcp, because a top-level `mcp` package
-would shadow the official MCP SDK that FastMCP imports.
 """
 
 from __future__ import annotations
@@ -32,18 +29,23 @@ DONE = "done"  # carries total durationMs
 # `extra`. Both sides of the boundary agree on this name and nothing else.
 ENVELOPE_KEY = "stage_event"
 
-EVENT_TYPES = (
-    PROMPT_RECEIVED,
-    ROUTING,
-    CONTRACT_SELECTED,
-    CODE_GENERATED,
-    EXECUTING,
-    RESULT,
-    CACHE_STORE,
-    CACHE_HIT,
-    ERROR,
-    PROPOSAL,
-    DONE,
+# The whole vocabulary. Emitter checks against it, so a typo in an event name
+# fails here instead of showing up as a stage the UI silently never renders --
+# which is exactly the sort of bug that survives to a demo.
+EVENT_TYPES = frozenset(
+    {
+        PROMPT_RECEIVED,
+        ROUTING,
+        CONTRACT_SELECTED,
+        CODE_GENERATED,
+        EXECUTING,
+        RESULT,
+        CACHE_STORE,
+        CACHE_HIT,
+        ERROR,
+        PROPOSAL,
+        DONE,
+    }
 )
 
 
@@ -75,7 +77,7 @@ class StageEvent:
         }
 
     @classmethod
-    def from_notification(cls, msg: str, extra: dict[str, Any]) -> "StageEvent | None":
+    def from_notification(cls, msg: str, extra: dict[str, Any]) -> StageEvent | None:
         """Rebuild an event on the client side of an MCP log notification.
 
         Returns None for ordinary server logging that is not one of ours.
@@ -107,6 +109,8 @@ class Emitter:
         self._seq = 0
 
     async def emit(self, event_type: str, **data: Any) -> StageEvent:
+        if event_type not in EVENT_TYPES:
+            raise ValueError(f"unknown stage event {event_type!r}; add it to EVENT_TYPES")
         event = StageEvent(run_id=self.run_id, seq=self._seq, type=event_type, data=data)
         self._seq += 1
         await self._sink(event)
@@ -124,8 +128,3 @@ class ListSink:
 
     def types(self) -> list[str]:
         return [e.type for e in self.events]
-
-
-async def null_sink(event: StageEvent) -> None:
-    """Discards events, for callers that only want the return value."""
-    return None
