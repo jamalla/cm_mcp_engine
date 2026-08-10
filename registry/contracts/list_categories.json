@@ -1,0 +1,169 @@
+{
+  "$schema": "../schema/tool-contract.v1.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "list_categories",
+    "title": "List Store Categories",
+    "description": "Returns a paginated list of the store's product categories, optionally filtered by a name keyword or by active/hidden status.",
+    "whenToUse": [
+      "The merchant wants an overview of their store's category tree, e.g. 'what categories do I have?'.",
+      "The merchant asks whether a category with a certain name exists, e.g. 'do I have a shoes category?' -- filter with the keyword argument.",
+      "The merchant wants to review which categories are hidden from the storefront versus active -- filter with the status argument.",
+      "An agent needs a category id before acting on a category or filtering products by category."
+    ],
+    "whenNotToUse": [
+      "The merchant named ONE specific category and wants its full details -- use get_category with the category id instead.",
+      "The merchant wants the products inside a category, not the categories themselves -- use list_category_products instead."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Pagination page number. The response returns one page of categories; increment to fetch the rest."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Filter categories to those whose name matches this keyword."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "hidden"
+            ],
+            "description": "Filter categories by visibility status: 'active' (shown in the storefront) or 'hidden'."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The category id, used by sibling category and product tools."
+          },
+          "name": {
+            "type": "string",
+            "description": "The category's display name."
+          },
+          "parent_id": {
+            "type": "integer",
+            "description": "Id of the parent category; 0 for a top-level category."
+          },
+          "status": {
+            "type": "string",
+            "description": "Visibility status: 'active' or 'hidden'."
+          },
+          "sort_order": {
+            "type": "integer",
+            "description": "The category's position among its siblings."
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL of the category's image; null when the category has none."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ui": {
+        "display": "table",
+        "title": "Store Categories"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "List Categories -- list all categories related to your store, filterable by a keyword matching category names.",
+      "docsUrl": "https://docs.salla.dev/5394207e0",
+      "method": "GET",
+      "path": "/categories",
+      "auth": {
+        "scopes": [
+          "categories.read"
+        ]
+      },
+      "parameters": {
+        "query": [
+          {
+            "name": "page",
+            "description": "The pagination page number."
+          },
+          {
+            "name": "keyword",
+            "description": "A keyword to filter categories by a specific name."
+          },
+          {
+            "name": "status",
+            "description": "The status of the category, whether it is 'active' or 'hidden'."
+          }
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": true,
+        "pagination": "standard",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing or does not carry the categories.read scope, so the categories cannot be read until the app's authorization is fixed."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "validation": {
+    "rules": [
+      {
+        "field": "status",
+        "match": "^(active|hidden)$",
+        "message": "status must be either 'active' or 'hidden'"
+      }
+    ]
+  },
+  "dependencies": [],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "keyBy": [
+        "page",
+        "keyword",
+        "status"
+      ],
+      "ttlSeconds": 300
+    }
+  }
+}
