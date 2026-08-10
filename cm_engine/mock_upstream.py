@@ -128,6 +128,12 @@ async def list_categories(
             "perPage": PER_PAGE,
             "currentPage": page,
             "totalPages": total_pages,
+            # Salla really sends this: a prebuilt URL carrying the connected app's
+            # id. Kept here so a test can prove the engine does not pass it on.
+            "links": {
+                "next": f"http://api.salla.example/admin/v2/categories"
+                f"?connected_app_id=1642267012&page={page + 1}"
+            },
         },
     )
 

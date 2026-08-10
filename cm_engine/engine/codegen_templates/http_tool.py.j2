@@ -48,6 +48,11 @@ COLLECTION = {{ collection | pyval }}
 PAGINATION = {{ pagination | pyval }}
 SUCCESS_STATUSES = {{ success_statuses | pyval }}
 RESPONSE_FIELDS = {{ response_fields | pyval }}
+# What `pagination: standard` promises, and all it promises. Upstreams add more
+# beside the data -- Salla sends prebuilt `links` carrying an internal app id and
+# an admin URL -- and an agent paginates with this tool's own page argument, so
+# the extras stop here rather than travelling into a model's context.
+PAGINATION_FIELDS = ['count', 'total', 'perPage', 'currentPage', 'totalPages']
 ERROR_MESSAGE_PATH = {{ error_message_path | pyval }}
 ERROR_FIELDS_PATH = {{ error_fields_path | pyval }}
 # What the contract says each documented failure means here, phrased for the
@@ -228,8 +233,11 @@ def shape(payload):
     items = node if isinstance(node, list) else [node]
     result = {"items": [project(item) for item in items], "count": len(items)}
     if PAGINATION == "standard" and isinstance(payload, dict):
-        # Sits beside the data in the envelope, not inside it.
-        result["pagination"] = payload.get("pagination")
+        # Sits beside the data in the envelope, not inside it -- and is projected
+        # for the same reason the items are.
+        page = payload.get("pagination")
+        if isinstance(page, dict):
+            result["pagination"] = {k: page[k] for k in PAGINATION_FIELDS if k in page}
     return result
 
 

@@ -10,6 +10,8 @@ Every test here needs the offline upstream, which the `mock_upstream` fixture
 starts in-process -- so they pass in a clean checkout with nothing else running.
 """
 
+import json
+
 import pytest
 
 from cm_engine.engine.executor import Executor
@@ -41,6 +43,25 @@ async def test_a_list_endpoint_unwraps_the_envelope_and_keeps_the_pagination(exe
     assert outcome.output["count"] == 5
     assert outcome.output["pagination"]["totalPages"] == 2
     assert outcome.output["pagination"]["currentPage"] == 1
+
+
+async def test_pagination_is_projected_too(executor):
+    """The upstream sends more beside the data than the contract promises.
+
+    Salla's pagination object carries a prebuilt `links.next` URL with the
+    connected app's id in it. The agent paginates with the tool's own `page`
+    argument, so that URL has no business travelling into a model's context.
+    """
+    outcome = await run(executor, "list_categories", {"page": 1})
+
+    assert set(outcome.output["pagination"]) == {
+        "count",
+        "total",
+        "perPage",
+        "currentPage",
+        "totalPages",
+    }
+    assert "connected_app_id" not in json.dumps(outcome.output)
 
 
 async def test_the_response_is_projected_to_the_fields_the_contract_promised(executor):
