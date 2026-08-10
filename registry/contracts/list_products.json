@@ -1,0 +1,199 @@
+{
+  "$schema": "../schema/tool-contract.v1.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "list_products",
+    "title": "List Store Products",
+    "description": "Returns a paginated list of the store's products with their price, stock quantity and sale status, optionally narrowed by a name/SKU keyword, a status, or a category.",
+    "whenToUse": [
+      "The merchant wants to see what they sell, e.g. 'what products do I have?' or 'show me my catalogue'.",
+      "The merchant asks whether a product exists or wants to find it by name or SKU, e.g. 'do I still sell the leather wallet?' -- filter with the keyword argument.",
+      "The merchant asks which products are out of stock or hidden from the storefront -- filter with the status argument ('out' or 'hidden').",
+      "The merchant wants the products that sit inside one category, e.g. 'what's in my shoes category?' -- filter with the categoryId argument.",
+      "An agent needs product ids, SKUs or current prices before reporting on or acting on specific products."
+    ],
+    "whenNotToUse": [
+      "The merchant named ONE specific product and wants its full details, variants or options -- use get_product with the product id instead.",
+      "The merchant wants the store's categories themselves rather than the products in them -- use list_categories instead.",
+      "The merchant wants to change a product's price, stock or visibility -- this tool only reads; use update_product instead."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Pagination page number. The response returns one page of products; increment to fetch the rest."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Filter products to those whose name or SKU matches this keyword."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sale",
+              "out",
+              "hidden"
+            ],
+            "description": "Filter products by status: 'sale' (on sale in the storefront), 'out' (out of stock) or 'hidden' (not shown in the storefront)."
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "Return only the products included in this category. The id comes from list_categories."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The product id, used by sibling product tools."
+          },
+          "name": {
+            "type": "string",
+            "description": "The product's display name."
+          },
+          "sku": {
+            "type": "string",
+            "description": "The merchant's stock keeping unit for the product."
+          },
+          "status": {
+            "type": "string",
+            "description": "Product status: 'sale', 'out' or 'hidden'."
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Units currently in stock; not meaningful for products with unlimited quantity."
+          },
+          "price": {
+            "type": "object",
+            "description": "The product's current price.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The price value."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the store, e.g. 'SAR'."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ui": {
+        "display": "table",
+        "title": "Store Products"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "List Products -- list all available products related to your store, filterable by a keyword matching a product name or SKU, by status, and by category.",
+      "docsUrl": "https://docs.salla.dev/5394168e0",
+      "method": "GET",
+      "path": "/products",
+      "auth": {
+        "scopes": [
+          "products.read"
+        ]
+      },
+      "parameters": {
+        "query": [
+          {
+            "name": "page",
+            "description": "The pagination page number."
+          },
+          {
+            "name": "keyword",
+            "description": "A keyword to filter products that match a specific name or SKU value."
+          },
+          {
+            "name": "status",
+            "description": "The status of the product: 'sale', 'out' or 'hidden'."
+          },
+          {
+            "name": "category",
+            "from": "categoryId",
+            "description": "Get products included in a specific category."
+          }
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": true,
+        "pagination": "standard",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the products.read scope, so the catalogue cannot be read until the app's authorization is fixed."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "validation": {
+    "rules": [
+      {
+        "field": "status",
+        "match": "^(sale|out|hidden)$",
+        "message": "status must be one of 'sale', 'out' or 'hidden'"
+      },
+      {
+        "field": "categoryId",
+        "match": "^[0-9]+$",
+        "message": "categoryId must be a numeric category id, as returned by list_categories"
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "contract": "list_categories",
+      "reason": "the categoryId filter takes a category id, which the merchant's agent gets from list_categories"
+    }
+  ],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "keyBy": [
+        "page",
+        "keyword",
+        "status",
+        "categoryId"
+      ],
+      "ttlSeconds": 120
+    }
+  }
+}
