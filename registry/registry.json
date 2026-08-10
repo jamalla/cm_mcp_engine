@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-08-10T12:47:31+00:00",
+  "sourceRepo": "cm_mcp_contracts",
+  "sourceCommit": "a27ff3b1ff0d974703705c8a7d6ef6233f672bdd",
+  "schemaId": "https://contract-mcp.example/schemas/tool-contract.v1.json",
+  "layout": "index",
+  "toolCount": 1,
+  "toolNames": [
+    "list_categories"
+  ],
+  "contracts": [
+    {
+      "name": "list_categories",
+      "version": "1.0.0",
+      "path": "contracts/list_categories.json",
+      "sha256": "02d49cf89e62a98936e11cbea9973ebacb520790daed278881904ef9add8d84c"
+    }
+  ]
+}
