@@ -1,6 +1,9 @@
 """Registry, code_mode, caches, and the executor's cache-hit short circuit."""
 
+import ast
+import json
 import time
+from pathlib import Path
 
 import pytest
 
@@ -11,21 +14,29 @@ from cm_engine.engine.executor import Executor
 from cm_engine.events import ListSink
 from cm_engine.registry.loader import Registry, executability_problems, load_catalog
 
+FIXTURES = Path(__file__).parent / "fixtures" / "contracts"
+
 
 @pytest.fixture(scope="module")
 def catalog():
     return load_catalog()
 
 
+def _contract(name: str) -> dict:
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+
 # -- registry ---------------------------------------------------------------
 
 
-def test_catalog_loads_and_expands_multi_tool_packages(catalog):
+def test_catalog_loads_every_pinned_contract(catalog):
     names = {entry.name for entry in catalog.all()}
-    assert {"get_order_status", "estimate_delivery_window", "cancel_order"} <= names
-    # The two tools inside partner_support.multi.json must be individually callable.
-    assert {"lookup_shipping_zone", "check_return_window"} <= names
-    assert catalog.get("lookup_shipping_zone").package == "partner_support"
+    assert {
+        "list_categories",
+        "create_category",
+        "delete_category",
+        "estimate_delivery_window",
+    } <= names
     assert not catalog.warnings
 
 
@@ -33,8 +44,22 @@ def test_public_view_never_leaks_the_binding(catalog):
     """The agent sees this. A leak here would undo the whole boundary."""
     for view in catalog.public_view():
         assert "binding" not in view
-        assert "secretRef" not in str(view)
+        for forbidden in ("api.salla.dev", "SALLA_ACCESS_TOKEN", "127.0.0.1"):
+            assert forbidden not in json.dumps(view)
         assert {"name", "description", "whenToUse", "inputSchema"} <= set(view)
+
+
+def test_annotations_are_read_from_the_interface(catalog):
+    """MCP's own field names, in MCP's own half of the contract."""
+    listing = catalog.get("list_categories")
+    assert listing.read_only is True
+    assert listing.destructive is False
+    assert listing.annotations["idempotentHint"] is True
+
+    deletion = catalog.get("delete_category")
+    assert deletion.read_only is False
+    assert deletion.destructive is True
+    assert deletion.needs_approval is True
 
 
 def test_every_fixture_contract_is_executable(catalog):
@@ -42,79 +67,92 @@ def test_every_fixture_contract_is_executable(catalog):
         assert executability_problems(entry) == [], entry.name
 
 
-def test_an_unregistered_builtin_is_refused_not_served():
-    """The gap the contracts repo cannot see.
+# -- the cross-repo gate: what this engine refuses -------------------------
 
-    `builtin://forecast_weather` satisfies every schema rule and is still
-    unrunnable here. It must be skipped with a reason, never silently served as
-    a tool that fails on first call.
-    """
-    from cm_engine.registry.loader import Catalog, entries_from_contract
 
-    contract = {
-        "contractVersion": "1.0.0",
-        "kind": "single-tool",
-        "interface": {
-            "name": "forecast_weather",
-            "description": "Returns tomorrow's forecast for a city.",
-            "whenToUse": ["The user asks about the weather."],
-            "input": {"schema": {"type": "object", "properties": {"city": {"type": "string"}}}},
-            "response": {"schema": {"type": "object", "properties": {}}},
-        },
-        "binding": {"type": "none", "handler": "builtin://forecast_weather"},
-        "governance": {
-            "annotations": {
-                "readOnly": True,
-                "destructive": False,
-                "idempotent": True,
-                "openWorld": False,
-            },
-            "execution": {"mode": "direct", "humanApproval": "never"},
-            "caching": {"cacheable": False},
-        },
-    }
+def _entry(contract: dict):
+    from cm_engine.registry.loader import entries_from_contract
 
     (entry,) = entries_from_contract(contract)
-    problems = executability_problems(entry)
-    assert problems
-    assert "no builtin handler registered" in problems[0]
-    assert "forecast_weather" in problems[0]
+    return entry
+
+
+def test_an_unconfigured_upstream_is_refused_not_served():
+    """The gap the contracts repo cannot see.
+
+    `api: "shopify"` satisfies every schema rule. It is still unrunnable here,
+    because this engine holds no host and no credential for it -- and inventing
+    one is exactly what the upstream table exists to prevent.
+    """
+    contract = _contract("list_categories")
+    contract["binding"]["http"]["api"] = "shopify"
+
+    problems = executability_problems(_entry(contract))
+    assert any("not an upstream this engine is configured for" in p for p in problems)
+    assert any("'salla'" in p for p in problems), "the message should name what IS configured"
+
+
+def test_an_unregistered_builtin_is_refused_not_served():
+    contract = _contract("estimate_delivery_window")
+    contract["binding"]["handler"] = "builtin://forecast_weather"
+
+    problems = executability_problems(_entry(contract))
+    assert any("no builtin handler registered" in p for p in problems)
+
+
+def test_an_unmapped_path_placeholder_is_refused():
+    """A brace with nothing feeding it would be sent literally in the URL."""
+    contract = _contract("delete_category")
+    contract["binding"]["http"]["parameters"]["path"] = []
+
+    problems = executability_problems(_entry(contract))
+    assert any("{category_id} has no binding.http.parameters.path entry" in p for p in problems)
 
 
 def test_an_unsupported_binding_type_is_refused():
-    from cm_engine.registry.loader import entries_from_contract
+    contract = _contract("list_categories")
+    contract["binding"] = {"type": "grpc"}
 
-    contract = {
-        "contractVersion": "1.0.0",
-        "kind": "single-tool",
-        "interface": {
-            "name": "stream_events",
-            "input": {"schema": {"type": "object"}},
-            "response": {"schema": {"type": "object"}},
-        },
-        "binding": {"type": "grpc"},
-        "governance": {"annotations": {"readOnly": True}},
-    }
-    (entry,) = entries_from_contract(contract)
-    assert any("not executable by this engine" in p for p in executability_problems(entry))
+    assert any("not executable by this engine" in p for p in executability_problems(_entry(contract)))
+
+
+def test_a_missing_datapath_is_refused():
+    contract = _contract("list_categories")
+    del contract["binding"]["http"]["response"]["dataPath"]
+
+    problems = executability_problems(_entry(contract))
+    assert any("dataPath is missing" in p for p in problems)
+
+
+def test_a_kind_this_engine_cannot_run_is_skipped_loudly(tmp_path):
+    """Multi-tool packages are future work; a registry naming one says so."""
+    artifact = tmp_path / "registry.generated.json"
+    artifact.write_text(
+        json.dumps({"contracts": [{"kind": "multi-tool", "interface": {"name": "bundle"}}]}),
+        encoding="utf-8",
+    )
+
+    from cm_engine.config import ContractSource
+
+    catalog = load_catalog(ContractSource("registry-file", artifact, "test"))
+    assert len(catalog) == 0
+    assert any("kind 'multi-tool' is not executable" in w for w in catalog.warnings)
 
 
 def test_catalog_can_load_from_a_published_registry_artifact(tmp_path):
     """The deploy path: no contracts checkout, just the artifact."""
-    import json
-
     from cm_engine.config import ContractSource
 
     contracts = [
-        json.loads(p.read_text(encoding="utf-8"))
-        for p in sorted((__import__("pathlib").Path(__file__).parent / "fixtures" / "contracts").glob("*.json"))
+        json.loads(p.read_text(encoding="utf-8")) for p in sorted(FIXTURES.glob("*.json"))
     ]
     artifact = tmp_path / "registry.generated.json"
-    artifact.write_text(json.dumps({"toolCount": 5, "contracts": contracts}), encoding="utf-8")
+    artifact.write_text(
+        json.dumps({"toolCount": len(contracts), "contracts": contracts}), encoding="utf-8"
+    )
 
     loaded = load_catalog(ContractSource("registry-file", artifact, "test"))
-    assert "get_order_status" in loaded
-    assert "lookup_shipping_zone" in loaded
+    assert "list_categories" in loaded
     assert not loaded.warnings
 
 
@@ -123,27 +161,56 @@ def test_catalog_can_load_from_a_published_registry_artifact(tmp_path):
 
 def test_codegen_is_byte_stable(catalog):
     """Deterministic fill is what makes the code cache trustworthy."""
-    entry = catalog.get("get_order_status")
+    entry = catalog.get("list_categories")
     assert codemode.generate(entry) == codemode.generate(entry)
 
 
-def test_validation_rules_are_compiled_into_the_source(catalog):
-    entry = catalog.get("get_order_status")
-    source = codemode.generate(entry)
-    assert "^ORD-[0-9]{6,}$" in source
-    assert "orderId must look like ORD-123456" in source
-
-
 def test_generated_code_is_syntactically_valid(catalog):
-    import ast
-
     for entry in catalog.all():
         ast.parse(codemode.generate(entry))
 
 
-def test_only_declared_secrets_are_requested(catalog):
-    assert codemode.required_secrets(catalog.get("get_order_status")) == ["PARTNER_ORDERS_TOKEN"]
-    # A builtin has no network and therefore no secret at all.
+def test_the_upstream_host_comes_from_the_engine_not_the_contract(catalog):
+    """No contract carries a base URL, yet the generated code has one."""
+    source = codemode.generate(catalog.get("list_categories"))
+    assert "127.0.0.1" in source, "DEV_OFFLINE should resolve to the local mock"
+    assert "api.salla.dev" not in source
+    assert "UPSTREAM = 'salla'" in source
+    assert "baseUrl" not in json.dumps(_contract("list_categories"))
+
+
+def test_validation_rules_are_compiled_into_the_source(catalog):
+    source = codemode.generate(catalog.get("delete_category"))
+    assert "^[0-9]+$" in source
+    assert "categoryId must be a numeric category id" in source
+
+
+def test_query_parameters_carry_their_wire_names_and_styles(catalog):
+    source = codemode.generate(catalog.get("list_categories"))
+    assert "'wire': 'page'" in source
+    assert "'style': 'single'" in source
+
+
+def test_path_and_body_mappings_rename_arguments(catalog):
+    """camelCase tool arguments, snake_case wire names -- the contract's job."""
+    deletion = codemode.generate(catalog.get("delete_category"))
+    assert "{'wire': 'category_id', 'arg': 'categoryId'}" in deletion
+
+    creation = codemode.generate(catalog.get("create_category"))
+    assert "BODY_MODE = 'mapped'" in creation
+    assert "{'wire': 'parent_id', 'arg': 'parentId'}" in creation
+
+
+def test_declared_failures_reach_the_generated_code(catalog):
+    """A 404's meaning is written once, in the contract, and ends up here."""
+    source = codemode.generate(catalog.get("delete_category"))
+    assert "No category exists with this id" in source
+    assert "SUCCESS_STATUSES = [200, 202]" in source
+
+
+def test_only_the_upstreams_own_token_is_requested(catalog):
+    assert codemode.required_secrets(catalog.get("list_categories")) == ["SALLA_ACCESS_TOKEN"]
+    # A builtin has no network and therefore no credential at all.
     assert codemode.required_secrets(catalog.get("estimate_delivery_window")) == []
 
 
@@ -152,15 +219,16 @@ def test_only_declared_secrets_are_requested(catalog):
 
 def test_destructive_tools_are_never_cacheable(catalog):
     """The one rule that is a correctness bug rather than a preference."""
-    assert not is_cacheable(catalog.get("cancel_order"))
-    assert is_cacheable(catalog.get("get_order_status"))
+    assert not is_cacheable(catalog.get("delete_category"))
+    assert not is_cacheable(catalog.get("create_category"))
+    assert is_cacheable(catalog.get("list_categories"))
 
 
 def test_cache_key_respects_key_by(catalog):
-    entry = catalog.get("get_order_status")  # keyBy: ["orderId"]
-    a = cache_key(entry, {"orderId": "ORD-111111", "traceId": "x"})
-    b = cache_key(entry, {"orderId": "ORD-111111", "traceId": "y"})
-    c = cache_key(entry, {"orderId": "ORD-222222"})
+    entry = catalog.get("list_categories")  # keyBy: page, keyword, status
+    a = cache_key(entry, {"page": 1, "run_hint": "x"})
+    b = cache_key(entry, {"page": 1, "run_hint": "y"})
+    c = cache_key(entry, {"page": 2})
     assert a == b, "an argument outside keyBy must not fragment the cache"
     assert a != c
 
@@ -231,10 +299,10 @@ async def test_validation_failure_is_reported_not_raised():
     executor = Executor()
     sink = ListSink()
     outcome = await executor.run(
-        "get_order_status", {"orderId": "nope"}, run_id="v", sink=sink
+        "list_categories", {"page": 1, "status": "sideways"}, run_id="v", sink=sink
     )
     assert outcome.status == "error"
-    assert "ORD-123456" in (outcome.error or "")
+    assert "status must be either" in (outcome.error or "")
     assert "error" in sink.types()
 
 
@@ -247,16 +315,19 @@ async def test_unknown_tool_is_an_error_event():
 
 
 async def test_propose_apply_mutates_nothing_without_a_token():
-    """AC#7 / brief §5.2: a write returns a proposal first."""
+    """AC#7: a destructive write returns a proposal first."""
     executor = Executor()
     sink = ListSink()
     outcome = await executor.run(
-        "cancel_order", {"orderId": "ORD-500001"}, run_id="p", sink=sink
+        "delete_category", {"categoryId": 1009}, run_id="p", sink=sink
     )
 
     assert outcome.status == "proposed"
     assert outcome.approval_token
-    assert "proposal" in sink.types()
+    proposal = next(e for e in sink.events if e.type == "proposal")
+    # The approver reads the request itself, wire names and all.
+    assert proposal.data["action"].startswith("DELETE ")
+    assert "/categories/1009" in proposal.data["action"]
     # Nothing ran: no code was generated and no sandbox was started.
     assert "executing" not in sink.types()
     assert "code_generated" not in sink.types()
@@ -265,8 +336,8 @@ async def test_propose_apply_mutates_nothing_without_a_token():
 async def test_a_forged_approval_token_is_refused():
     executor = Executor()
     outcome = await executor.run(
-        "cancel_order",
-        {"orderId": "ORD-500002"},
+        "delete_category",
+        {"categoryId": 1008},
         run_id="p2",
         sink=ListSink(),
         approval_token="not-the-real-token",

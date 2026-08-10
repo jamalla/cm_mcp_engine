@@ -1,4 +1,4 @@
-# Starts this service: the mock partner API and the FastMCP server.
+# Starts this service: the mock upstream API and the FastMCP server.
 #
 # That is all this repo owns. The UI lives in cm_mcp_agent and starts itself --
 # nothing here knows or cares whether it is running.
@@ -79,7 +79,7 @@ try {
         throw "$name did not become healthy at $probe."
     }
 
-    Start-Probed 'mock partner API :8787' 'uv' @('run', 'python', '-m', 'cm_engine.mock_partner_api') `
+    Start-Probed 'mock upstream API :8787' 'uv' @('run', 'python', '-m', 'cm_engine.mock_upstream') `
         'http://127.0.0.1:8787/healthz'
     Start-Probed 'FastMCP server :8765' 'uv' @('run', 'python', '-m', 'cm_engine.server') `
         'http://127.0.0.1:8765/mcp' $true

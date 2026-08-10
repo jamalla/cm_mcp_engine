@@ -13,9 +13,9 @@ import sys
 from cm_engine.engine.builtins import BUILTINS
 
 CONTRACT = "{{ contract_name }}@{{ contract_version }}"
-HANDLER = {{ handler | tojson }}
-REQUIRED = {{ required | tojson }}
-FORBIDDEN = {{ forbidden | tojson }}
+HANDLER = {{ handler | pyval }}
+REQUIRED = {{ required | pyval }}
+FORBIDDEN = {{ forbidden | pyval }}
 
 
 class ToolError(Exception):
@@ -34,9 +34,9 @@ def validate(args):
 
 {% for rule in rules %}
     # contract rule: {{ rule.field }} must match {{ rule.match }}
-    value = args.get({{ rule.field | tojson }})
-    if value is not None and not re.match({{ rule.match | tojson }}, str(value)):
-        raise ToolError({{ rule.message | tojson }})
+    value = args.get({{ rule.field | pyval }})
+    if value is not None and not re.match({{ rule.match | pyval }}, str(value)):
+        raise ToolError({{ rule.message | pyval }})
 {% endfor %}
     return args
 

@@ -102,21 +102,24 @@ def _build_tool(entry: ToolEntry) -> FunctionTool:
             "approvalToken": outcome.approval_token,
         }
 
-    annotations = entry.governance.get("annotations", {})
+    # The contract declares these with MCP's own field names, so they are served
+    # through unchanged -- no translation layer to disagree with the review that
+    # approved them.
+    annotations = entry.annotations
     return FunctionTool(
         name=entry.name,
         title=entry.interface.get("title", entry.name),
         description=_describe(entry),
         parameters=_input_schema(entry),
         annotations=ToolAnnotations(
-            readOnlyHint=annotations.get("readOnly", False),
-            destructiveHint=annotations.get("destructive", False),
-            idempotentHint=annotations.get("idempotent", False),
-            openWorldHint=annotations.get("openWorld", True),
+            title=entry.interface.get("title"),
+            readOnlyHint=annotations.get("readOnlyHint", False),
+            destructiveHint=annotations.get("destructiveHint", True),
+            idempotentHint=annotations.get("idempotentHint", False),
+            openWorldHint=annotations.get("openWorldHint", True),
         ),
         meta={
             "contractVersion": entry.version,
-            "package": entry.package,
             "whenToUse": entry.interface.get("whenToUse", []),
             "whenNotToUse": entry.interface.get("whenNotToUse", []),
             # Input constraints are part of the public surface -- a client needs
@@ -124,6 +127,9 @@ def _build_tool(entry: ToolEntry) -> FunctionTool:
             "validationRules": entry.rules,
             "governance": entry.governance,
             "responseUi": entry.interface.get("response", {}).get("ui"),
+            # The scopes the merchant's credential must carry. Useful to a client
+            # explaining a 401; it names no secret and no host.
+            "requiredScopes": entry.scopes,
         },
         fn=handler,
     )

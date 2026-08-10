@@ -2,26 +2,57 @@
 
 Do not edit. Regenerate by bumping contractVersion in the contract.
 
-This module is self-contained: it reads an args JSON object on stdin and
-writes a result JSON object on stdout, which is what lets the sandbox run it
-as a plain subprocess.
+Everything below was declared in the contract: the endpoint, how arguments
+become a request, which statuses mean success, what each documented failure
+means, and where the payload sits inside the upstream's envelope. Nothing here
+was invented at generation time.
+
+This module is self-contained: it reads an args JSON object on stdin and writes
+a result JSON object on stdout, which is what lets the sandbox run it as a plain
+subprocess.
 """
 
 import json
+import os
 import re
 import sys
+from urllib.parse import quote
 
 import httpx
 
 CONTRACT = "{{ contract_name }}@{{ contract_version }}"
-BASE_URL = {{ base_url | tojson }}
-METHOD = {{ method | tojson }}
-PATH_TEMPLATE = {{ path_template | tojson }}
+
+# -- the endpoint -----------------------------------------------------------
+# The host comes from the engine's upstream table, not from the contract: a
+# contract names an upstream and never learns where a token travels.
+UPSTREAM = {{ upstream | pyval }}
+BASE_URL = {{ base_url | pyval }}
+METHOD = {{ method | pyval }}
+PATH_TEMPLATE = {{ path_template | pyval }}
 TIMEOUT_SECONDS = {{ timeout_ms }} / 1000
-PATH_PARAMS = {{ path_params | tojson }}
-REQUIRED = {{ required | tojson }}
-FORBIDDEN = {{ forbidden | tojson }}
-RESPONSE_FIELDS = {{ response_fields | tojson }}
+TOKEN_ENV = {{ token_env | pyval }}
+SCOPES = {{ scopes | pyval }}
+
+# -- arguments -> request ---------------------------------------------------
+PATH_PARAMS = {{ path_params | pyval }}
+QUERY_PARAMS = {{ query_params | pyval }}
+BODY_MODE = {{ body_mode | pyval }}
+BODY_FIELDS = {{ body_fields | pyval }}
+CONSUMED_ARGS = {{ consumed_args | pyval }}
+REQUIRED = {{ required | pyval }}
+FORBIDDEN = {{ forbidden | pyval }}
+
+# -- response -> result -----------------------------------------------------
+DATA_PATH = {{ data_path | pyval }}
+COLLECTION = {{ collection | pyval }}
+PAGINATION = {{ pagination | pyval }}
+SUCCESS_STATUSES = {{ success_statuses | pyval }}
+RESPONSE_FIELDS = {{ response_fields | pyval }}
+ERROR_MESSAGE_PATH = {{ error_message_path | pyval }}
+ERROR_FIELDS_PATH = {{ error_fields_path | pyval }}
+# What the contract says each documented failure means here, phrased for the
+# agent to relay to a person.
+ERROR_MEANINGS = {{ error_meanings | pyval }}
 
 
 class ToolError(Exception):
@@ -31,9 +62,10 @@ class ToolError(Exception):
 def validate(args):
     """Guards compiled straight from the contract.
 
-    Each rule below is a `validation.rules` entry in the contract. They appear
-    here as real code because that is the point of code_mode: the contract's
-    declaration becomes the executable check.
+    Each rule below is a `validation.rules` entry. They appear here as real code
+    because that is the point of code_mode: the contract's declaration becomes
+    the executable check, and a bad argument fails here instead of costing a
+    round trip and an upstream 422.
     """
     for name in REQUIRED:
         if name not in args:
@@ -45,42 +77,173 @@ def validate(args):
 
 {% for rule in rules %}
     # contract rule: {{ rule.field }} must match {{ rule.match }}
-    value = args.get({{ rule.field | tojson }})
-    if value is not None and not re.match({{ rule.match | tojson }}, str(value)):
-        raise ToolError({{ rule.message | tojson }})
+    value = args.get({{ rule.field | pyval }})
+    if value is not None and not re.match({{ rule.match | pyval }}, str(value)):
+        raise ToolError({{ rule.message | pyval }})
 {% endfor %}
     return args
 
 
-def build_request(args):
+def build_path(args):
     path = PATH_TEMPLATE
-    for name in PATH_PARAMS:
-        path = path.replace("{" + name + "}", str(args[name]))
+    for mapping in PATH_PARAMS:
+        if mapping["arg"] not in args:
+            raise ToolError(f"missing path argument: {mapping['arg']}")
+        # quote(safe="") so an id containing a slash cannot reshape the URL.
+        path = path.replace(
+            "{" + mapping["wire"] + "}", quote(str(args[mapping["arg"]]), safe="")
+        )
+    return BASE_URL.rstrip("/") + path
 
-    # Whatever the path did not consume travels as query params on a read and
-    # as a JSON body on a write.
-    leftover = {k: v for k, v in args.items() if k not in PATH_PARAMS}
-    params = leftover if METHOD == "GET" else None
-    body = leftover if METHOD != "GET" else None
-    return BASE_URL.rstrip("/") + path, params, body
+
+def build_query(args):
+    """Query parameters as (name, value) pairs, honoring each one's style.
+
+    Pairs rather than a dict because bracket and repeat styles send the same
+    name more than once -- which is how Laravel-shaped upstreams take arrays.
+    """
+    pairs = []
+    for spec in QUERY_PARAMS:
+        if spec["has_constant"]:
+            pairs.append((spec["wire"], spec["constant"]))
+            continue
+
+        value = args.get(spec["arg"])
+        if value is None:
+            continue
+
+        style = spec["style"]
+        if isinstance(value, (list, tuple)):
+            if style == "bracket":
+                pairs += [(spec["wire"] + "[]", item) for item in value]
+            elif style == "repeat":
+                pairs += [(spec["wire"], item) for item in value]
+            elif style == "csv":
+                pairs.append((spec["wire"], ",".join(str(item) for item in value)))
+            else:
+                raise ToolError(
+                    f"query parameter {spec['wire']} takes a single value, got a list"
+                )
+        else:
+            pairs.append((spec["wire"], value))
+    return pairs
+
+
+def build_body(args):
+    if BODY_MODE == "none":
+        return None
+    if BODY_MODE == "mapped":
+        return {
+            mapping["wire"]: args[mapping["arg"]]
+            for mapping in BODY_FIELDS
+            if mapping["arg"] in args
+        }
+    # passthrough: whatever the path and query did not consume.
+    return {k: v for k, v in args.items() if k not in CONSUMED_ARGS}
+
+
+def dig(node, path):
+    """Follow a dotted path, or None if it is not there."""
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return None
+        node = node[key]
+    return node
+
+
+def retryable(status, declared):
+    """The contract's declaration wins; otherwise decide by class."""
+    if declared is not None and "retryable" in declared:
+        return bool(declared["retryable"])
+    return status == 429 or status >= 500
+
+
+def describe_failure(response):
+    """Turn an upstream failure into something an agent can relay.
+
+    The contract documented what each status means for THIS endpoint, so the
+    caller hears "no category exists with this id" rather than a raw body.
+    """
+    status = response.status_code
+    declared = ERROR_MEANINGS.get(str(status))
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+
+    parts = [f"{CONTRACT}: {UPSTREAM} returned {status}"]
+
+    if declared:
+        parts.append(declared["meaning"])
+    else:
+        parts.append("a status this contract does not document for this endpoint")
+
+    message = dig(body, ERROR_MESSAGE_PATH)
+    if isinstance(message, str) and message:
+        parts.append(f'upstream said: "{message}"')
+
+    fields = dig(body, ERROR_FIELDS_PATH)
+    if isinstance(fields, dict) and fields:
+        detail = "; ".join(
+            f"{name}: {problem[0] if isinstance(problem, list) and problem else problem}"
+            for name, problem in fields.items()
+        )
+        parts.append(f"invalid fields -- {detail}")
+
+    if status == 401 and SCOPES:
+        parts.append(f"this endpoint needs the {', '.join(SCOPES)} scope")
+
+    if retryable(status, declared):
+        parts.append("retrying the call unchanged may succeed")
+
+    return " -- ".join(parts)
+
+
+def project(value):
+    """Keep only the fields the contract promised.
+
+    A chatty upstream adding a field does not leak it to the caller, and the
+    agent sees the shape it was told to expect.
+    """
+    if not RESPONSE_FIELDS or not isinstance(value, dict):
+        return value
+    return {k: v for k, v in value.items() if k in RESPONSE_FIELDS}
+
+
+def shape(payload):
+    """Unwrap the envelope the contract declared and shape what is inside."""
+    node = payload
+    for key in DATA_PATH:
+        if not isinstance(node, dict) or key not in node:
+            raise ToolError(
+                f"{CONTRACT}: the response has no {'.'.join(DATA_PATH)} -- "
+                f"the upstream envelope is not the one the contract declared"
+            )
+        node = node[key]
+
+    if not COLLECTION:
+        return project(node)
+
+    items = node if isinstance(node, list) else [node]
+    result = {"items": [project(item) for item in items], "count": len(items)}
+    if PAGINATION == "standard" and isinstance(payload, dict):
+        # Sits beside the data in the envelope, not inside it.
+        result["pagination"] = payload.get("pagination")
+    return result
 
 
 def run(args):
     validate(args)
-    url, params, body = build_request(args)
+    url = build_path(args)
+    params = build_query(args)
+    body = build_body(args)
 
     headers = {"accept": "application/json"}
-{% if auth_type == "bearer" %}
-    # The secret is injected by the sandbox as an env var named by secretRef.
-    # It is never written into this file.
-    import os
-
-    token = os.environ.get({{ secret_ref | tojson }}, "")
-    headers["authorization"] = f"Bearer {token}"
-{% elif auth_type == "apiKey" %}
-    import os
-
-    headers[{{ auth_header | tojson }}] = os.environ.get({{ secret_ref | tojson }}, "")
+{% if auth_scheme == "bearer" %}
+    # The credential is injected by the sandbox as an env var and is never
+    # written into this file. The contract only declared which scopes it needs.
+    headers["authorization"] = f"Bearer {os.environ.get(TOKEN_ENV, '')}"
 {% endif %}
 
     try:
@@ -92,17 +255,15 @@ def run(args):
     except httpx.HTTPError as exc:
         raise ToolError(f"{CONTRACT}: could not reach {BASE_URL} -- {exc}") from exc
 
-    if response.status_code >= 400:
-        raise ToolError(f"{CONTRACT}: upstream returned {response.status_code} -- {response.text[:200]}")
+    if response.status_code not in SUCCESS_STATUSES:
+        raise ToolError(describe_failure(response))
 
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ToolError(f"{CONTRACT}: upstream returned a non-JSON body") from exc
 
-    # Shape the response to what the contract promised, so a chatty upstream
-    # cannot leak extra fields to the caller.
-    if RESPONSE_FIELDS and isinstance(payload, dict):
-        payload = {k: v for k, v in payload.items() if k in RESPONSE_FIELDS}
-
-    return payload
+    return shape(payload)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ from typing import Any
 from cm_engine import events as ev
 from cm_engine.cache.code_cache import CodeCache
 from cm_engine.cache.result_cache import ResultCache, cache_key, is_cacheable
-from cm_engine.config import resolve_secret
+from cm_engine.config import resolve_upstream, resolve_token, upstream_base_url
 from cm_engine.engine import codemode
 from cm_engine.engine.sandbox import run_module
 from cm_engine.events import Emitter, EmitSink
@@ -84,7 +84,6 @@ class Executor:
             ev.CONTRACT_SELECTED,
             contractName=entry.name,
             version=entry.version,
-            package=entry.package,
             contract=entry.raw_contract(),
             uiHint=entry.interface.get("response", {}).get("ui"),
         )
@@ -159,7 +158,7 @@ class Executor:
         # --- execute -----------------------------------------------------
         await emitter.emit(ev.EXECUTING, tool=entry.name, binding=entry.binding.get("type"))
 
-        injected = {name: resolve_secret(name) for name in codemode.required_secrets(entry)}
+        injected = self._credentials(entry)
         sandbox = await run_module(module_path, args, secrets=injected)
 
         if not sandbox.ok:
@@ -188,12 +187,29 @@ class Executor:
     # -- helpers ----------------------------------------------------------
 
     @staticmethod
+    def _credentials(entry: ToolEntry) -> dict[str, str]:
+        """The env the sandbox may see: this tool's upstream token, nothing else."""
+        return {
+            name: resolve_token(resolve_upstream(entry.http.get("api")))
+            for name in codemode.required_secrets(entry)
+        }
+
+    @staticmethod
     def _proposal_preview(entry: ToolEntry, args: dict[str, Any]) -> str:
-        binding = entry.binding
-        if binding.get("type") == "http":
-            http = binding["http"]
-            path = http["path"]
-            for name, value in args.items():
-                path = path.replace("{" + name + "}", str(value))
-            return f"{http['method']} {http['baseUrl'].rstrip('/')}{path}"
-        return f"{entry.name}({args})"
+        """What the human is being asked to approve, as the request it becomes."""
+        if entry.binding.get("type") != "http":
+            return f"{entry.name}({args})"
+
+        http = entry.http
+        path = http["path"]
+        # Show the wire names the upstream will see, resolved through the
+        # contract's own mappings -- the approver should read the real request.
+        for mapping in http.get("parameters", {}).get("path") or []:
+            wire = mapping["name"]
+            value = args.get(mapping.get("from", wire))
+            if value is not None:
+                path = path.replace("{" + wire + "}", str(value))
+
+        upstream = resolve_upstream(http.get("api"))
+        host = upstream_base_url(upstream) if upstream else "(unconfigured upstream)"
+        return f"{http['method']} {host.rstrip('/')}{path}"

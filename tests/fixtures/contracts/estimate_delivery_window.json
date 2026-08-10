@@ -1,54 +1,67 @@
 {
   "$schema": "../schema/tool-contract.v1.json",
+  "_comment": "The offline half of the platform: a contract whose binding calls nothing. No host, no token, no network -- the engine runs a registered builtin. Pinned here because it is the one contract shape that proves the demo works with every upstream unreachable.",
+
   "contractVersion": "1.0.0",
   "kind": "single-tool",
 
   "interface": {
     "name": "estimate_delivery_window",
     "title": "Estimate Delivery Window",
-    "description": "Estimates a delivery window in business days from a destination zone and shipping speed, with no external API call.",
+    "description": "Estimates how many business days a shipment takes, from its destination zone and the chosen shipping speed.",
+
     "whenToUse": [
-      "The user asks how long delivery will take or when a package should arrive.",
-      "The user has not shipped yet and wants an estimate before ordering."
+      "The customer asks how long delivery will take before an order exists yet.",
+      "The merchant is comparing shipping speeds for a destination, e.g. 'how much faster is express to the UAE?'."
     ],
     "whenNotToUse": [
-      "The user is asking about a specific existing order -- use get_order_status instead.",
-      "The user wants a guaranteed delivery date rather than an estimate."
+      "The customer is asking where an existing order is right now -- that needs an order tool, not an estimate."
     ],
+
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+
     "input": {
       "schema": {
         "type": "object",
         "properties": {
           "zone": {
             "type": "string",
-            "description": "Destination zone: domestic, regional, or international."
+            "enum": ["domestic", "regional", "international"],
+            "description": "Destination zone relative to the store."
           },
           "speed": {
             "type": "string",
-            "description": "Shipping speed: standard, express, or overnight."
+            "enum": ["standard", "express", "overnight"],
+            "description": "Shipping speed. Defaults to standard."
           }
         },
         "required": ["zone"],
         "additionalProperties": false
       }
     },
+
     "response": {
       "schema": {
         "type": "object",
         "properties": {
-          "zone": { "type": "string" },
-          "speed": { "type": "string" },
-          "minDays": { "type": "integer" },
-          "maxDays": { "type": "integer" },
-          "summary": { "type": "string" }
+          "zone": { "type": "string", "description": "The zone that was estimated." },
+          "speed": { "type": "string", "description": "The speed that was estimated." },
+          "minDays": { "type": "integer", "description": "Fastest expected business days." },
+          "maxDays": { "type": "integer", "description": "Slowest expected business days." },
+          "summary": { "type": "string", "description": "The estimate as a sentence." }
         },
-        "required": ["zone", "minDays", "maxDays"]
+        "required": ["minDays", "maxDays", "summary"]
       },
       "ui": {
         "display": "card",
-        "title": "Delivery estimate ({zone})",
+        "title": "Delivery estimate",
         "primary": "{summary}",
-        "secondary": "Speed: {speed}"
+        "secondary": "{zone} / {speed}"
       }
     }
   },
@@ -58,21 +71,17 @@
     "handler": "builtin://estimate_delivery_window"
   },
 
-  "validation": {
-    "rules": [
-      {
-        "field": "zone",
-        "match": "^(domestic|regional|international)$",
-        "message": "zone must be one of: domestic, regional, international"
-      }
-    ]
-  },
-
   "dependencies": [],
 
   "governance": {
-    "annotations": { "readOnly": true, "destructive": false, "idempotent": true, "openWorld": false },
-    "execution": { "mode": "direct", "humanApproval": "never" },
-    "caching": { "cacheable": true, "keyBy": ["zone", "speed"], "ttlSeconds": 600 }
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "keyBy": ["zone", "speed"],
+      "ttlSeconds": 3600
+    }
   }
 }

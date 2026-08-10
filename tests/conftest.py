@@ -25,8 +25,8 @@ os.environ["CM_CONTRACTS_DIR"] = str(FIXTURE_CONTRACTS)
 
 
 @pytest.fixture(scope="session")
-def mock_partner_api():
-    """Run the mock partner API in-process for tests that exercise http bindings.
+def mock_upstream():
+    """Run the offline upstream in-process for tests that exercise http bindings.
 
     Without this a test can pass only because a dev happens to have the demo
     stack running -- which is how the propose-apply test quietly depended on a
@@ -36,7 +36,7 @@ def mock_partner_api():
     import uvicorn
 
     from cm_engine.config import MOCK_API_PORT
-    from cm_engine.mock_partner_api import app
+    from cm_engine.mock_upstream import app
 
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=MOCK_API_PORT, log_level="error")
@@ -53,7 +53,7 @@ def mock_partner_api():
             time.sleep(0.05)
     else:
         server.should_exit = True
-        pytest.fail(f"mock partner API never came up on :{MOCK_API_PORT}")
+        pytest.fail(f"mock upstream never came up on :{MOCK_API_PORT}")
 
     yield f"http://127.0.0.1:{MOCK_API_PORT}"
 

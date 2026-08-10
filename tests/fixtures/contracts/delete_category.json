@@ -1,0 +1,131 @@
+{
+  "$schema": "../schema/tool-contract.v1.json",
+
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+
+  "interface": {
+    "name": "delete_category",
+    "title": "Delete Store Category",
+    "description": "Permanently removes one category from the store, identified by its category id.",
+
+    "whenToUse": [
+      "The merchant explicitly asks to delete a category and has confirmed which one, e.g. 'remove the Clearance category'."
+    ],
+    "whenNotToUse": [
+      "The merchant only wants a category hidden from the storefront -- use update_category to set status to hidden instead.",
+      "The merchant has not named a specific category -- use list_categories first and confirm before deleting anything."
+    ],
+
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "integer",
+            "description": "Id of the category to delete, as returned by list_categories."
+          }
+        },
+        "required": ["categoryId"],
+        "additionalProperties": false
+      }
+    },
+
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "The id of the deleted category." },
+          "deleted": { "type": "boolean", "description": "True once the category is gone." }
+        },
+        "required": ["id"]
+      },
+      "ui": {
+        "display": "text",
+        "title": "Category {id} deleted"
+      }
+    }
+  },
+
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "Delete Category -- remove a category from the store by id.",
+      "docsUrl": "https://docs.salla.dev/api-categories-delete",
+
+      "method": "DELETE",
+      "path": "/categories/{category_id}",
+
+      "auth": {
+        "scopes": ["categories.read_write"]
+      },
+
+      "parameters": {
+        "path": [
+          {
+            "name": "category_id",
+            "from": "categoryId",
+            "description": "The category to delete."
+          }
+        ]
+      },
+
+      "response": {
+        "dataPath": "data",
+        "collection": false,
+        "pagination": "none",
+        "successStatuses": [200, 202],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing or does not carry the categories.read_write scope, so nothing was deleted."
+            },
+            {
+              "status": 404,
+              "meaning": "No category exists with this id -- it may already have been deleted, so nothing was changed."
+            }
+          ]
+        }
+      },
+
+      "timeoutMs": 10000
+    }
+  },
+
+  "validation": {
+    "rules": [
+      {
+        "field": "categoryId",
+        "match": "^[0-9]+$",
+        "message": "categoryId must be a numeric category id"
+      }
+    ]
+  },
+
+  "dependencies": [
+    {
+      "contract": "list_categories",
+      "reason": "the category id to delete comes from list_categories"
+    }
+  ],
+
+  "governance": {
+    "execution": {
+      "mode": "propose-apply",
+      "humanApproval": "required"
+    },
+    "caching": {
+      "cacheable": false
+    }
+  }
+}

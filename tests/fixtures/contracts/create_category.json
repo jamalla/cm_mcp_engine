@@ -1,0 +1,139 @@
+{
+  "$schema": "../schema/tool-contract.v1.json",
+
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+
+  "interface": {
+    "name": "create_category",
+    "title": "Create Store Category",
+    "description": "Creates a new product category in the store, optionally nested under an existing parent category.",
+
+    "whenToUse": [
+      "The merchant explicitly asks to add a new category, e.g. 'create a Winter Sale category'.",
+      "The merchant wants a sub-category under a category that already exists, and gave its id."
+    ],
+    "whenNotToUse": [
+      "The merchant wants to rename or re-sort an existing category -- use update_category instead.",
+      "The merchant is only asking which categories exist -- use list_categories instead."
+    ],
+
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "description": "The category's display name, at least 3 characters."
+          },
+          "parentId": {
+            "type": "integer",
+            "description": "Id of the parent category. Omit or pass 0 for a top-level category."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "hidden"],
+            "description": "Whether the new category is visible in the storefront."
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      }
+    },
+
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "The new category's id." },
+          "name": { "type": "string", "description": "The category's display name." },
+          "parent_id": { "type": "integer", "description": "Id of the parent category; 0 for top level." },
+          "status": { "type": "string", "description": "Visibility status: 'active' or 'hidden'." },
+          "sort_order": { "type": "integer", "description": "Position among its siblings." }
+        },
+        "required": ["id", "name"]
+      },
+      "ui": {
+        "display": "card",
+        "title": "Category {name}",
+        "primary": "{id}",
+        "secondary": "{status}"
+      }
+    }
+  },
+
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "Create Category -- add a new category to the store.",
+      "docsUrl": "https://docs.salla.dev/api-categories-create",
+
+      "method": "POST",
+      "path": "/categories",
+
+      "auth": {
+        "scopes": ["categories.read_write"]
+      },
+
+      "parameters": {
+        "body": {
+          "mode": "mapped",
+          "fields": [
+            { "name": "name", "description": "The category name." },
+            { "name": "parent_id", "from": "parentId", "description": "Parent category id." },
+            { "name": "status", "description": "active or hidden." }
+          ]
+        }
+      },
+
+      "response": {
+        "dataPath": "data",
+        "collection": false,
+        "pagination": "none",
+        "successStatuses": [201],
+        "errors": {
+          "messagePath": "error.message",
+          "fieldsPath": "error.fields",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing or does not carry the categories.read_write scope, so nothing was created."
+            },
+            {
+              "status": 422,
+              "meaning": "The category was rejected as invalid -- the per-field messages say which value to fix; nothing was created."
+            }
+          ]
+        }
+      },
+
+      "timeoutMs": 10000
+    }
+  },
+
+  "dependencies": [
+    {
+      "contract": "list_categories",
+      "reason": "a parent category id comes from list_categories"
+    }
+  ],
+
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": false
+    }
+  }
+}

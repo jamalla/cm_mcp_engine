@@ -7,17 +7,14 @@ byte-stable -- which in turn is what makes the code cache trustworthy.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from cm_engine.config import resolve_base_url
+from cm_engine.config import resolve_upstream, upstream_base_url
 from cm_engine.registry.loader import ToolEntry
 
 TEMPLATE_DIR = Path(__file__).parent / "codegen_templates"
-
-_PATH_PARAM = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 _env = Environment(
     loader=FileSystemLoader(TEMPLATE_DIR),
@@ -26,6 +23,13 @@ _env = Environment(
     trim_blocks=False,
     lstrip_blocks=False,
 )
+
+# Embeds a value as a Python literal. Not `tojson`: JSON writes null/true/false,
+# which read as undefined names in Python and fail at import -- the templates
+# generate Python, so they need Python's spelling. repr is deterministic for the
+# str/int/bool/None/list/dict shapes a contract can hold, which is what keeps
+# generation byte-stable and the code cache trustworthy.
+_env.filters["pyval"] = repr
 
 
 def _common(entry: ToolEntry) -> dict:
@@ -39,45 +43,118 @@ def _common(entry: ToolEntry) -> dict:
     }
 
 
+def _mapping(spec: dict) -> dict[str, str]:
+    """A wire name and the tool argument feeding it.
+
+    `from` defaults to `name`, which is the common case: the contract exposes
+    the upstream's own parameter name because it was already a good one.
+    """
+    wire = spec["name"]
+    return {"wire": wire, "arg": spec.get("from", wire)}
+
+
+def _query_mapping(spec: dict) -> dict:
+    """As above, plus array serialization and pinned constants.
+
+    A `constant` is sent on every call and reads no argument -- the way a
+    contract pins a filter the agent must not be able to change.
+    """
+    wire = spec["name"]
+    has_constant = "constant" in spec
+    return {
+        "wire": wire,
+        "arg": None if has_constant else spec.get("from", wire),
+        "constant": spec.get("constant"),
+        "has_constant": has_constant,
+        "style": spec.get("style", "single"),
+    }
+
+
+def _http_context(entry: ToolEntry) -> dict:
+    http = entry.http
+    upstream = resolve_upstream(http.get("api"))
+    if upstream is None:
+        raise ValueError(
+            f"{entry.name}: binding.http.api {http.get('api')!r} is not a configured upstream"
+        )
+
+    parameters = http.get("parameters", {}) or {}
+    path_params = [_mapping(spec) for spec in parameters.get("path") or []]
+    query_params = [_query_mapping(spec) for spec in parameters.get("query") or []]
+    body = parameters.get("body") or {"mode": "none"}
+    body_fields = [_mapping(spec) for spec in body.get("fields") or []]
+
+    response = http.get("response", {}) or {}
+    errors = response.get("errors", {}) or {}
+    response_schema = entry.interface.get("response", {}).get("schema", {})
+
+    # Which tool arguments the path, query and mapped body already account for.
+    # Under body mode "passthrough" everything left over becomes the JSON body,
+    # so this set is what decides where an argument ends up.
+    consumed = (
+        {m["arg"] for m in path_params}
+        | {m["arg"] for m in query_params if m["arg"]}
+        | {m["arg"] for m in body_fields}
+    )
+
+    return {
+        **_common(entry),
+        "upstream": upstream.name,
+        # Resolved at generation time, so the code the audience reads in the
+        # right pane names the host it will really call.
+        "base_url": upstream_base_url(upstream),
+        "token_env": upstream.token_env,
+        "auth_scheme": upstream.auth_scheme,
+        "scopes": entry.scopes,
+        "method": http["method"],
+        "path_template": http["path"],
+        "timeout_ms": http.get("timeoutMs", 5000),
+        "path_params": path_params,
+        "query_params": query_params,
+        "body_mode": body.get("mode", "none"),
+        "body_fields": body_fields,
+        "consumed_args": sorted(consumed),
+        "data_path": response["dataPath"].split("."),
+        "collection": bool(response.get("collection")),
+        "pagination": response.get("pagination", "none"),
+        "success_statuses": response.get("successStatuses") or [200],
+        "error_message_path": (errors.get("messagePath") or "error.message").split("."),
+        "error_fields_path": (errors.get("fieldsPath") or "error.fields").split("."),
+        # Keyed by status so the generated code can name what a failure means
+        # instead of dumping the upstream's body at the agent.
+        "error_meanings": {
+            str(item["status"]): {
+                "meaning": item["meaning"],
+                **({"retryable": item["retryable"]} if "retryable" in item else {}),
+            }
+            for item in errors.get("statuses") or []
+        },
+        "response_fields": sorted(response_schema.get("properties", {})),
+    }
+
+
 def generate(entry: ToolEntry) -> str:
     """Render the tool's source. Pure: same contract in, same bytes out."""
-    binding = entry.binding
-    kind = binding.get("type")
+    kind = entry.binding.get("type")
 
     if kind == "http":
-        http = binding["http"]
-        auth = http.get("auth", {}) or {}
-        response_schema = entry.interface.get("response", {}).get("schema", {})
-
-        context = {
-            **_common(entry),
-            # The override is applied at generation time, so the generated code
-            # shows the audience exactly which host it will call.
-            "base_url": resolve_base_url(http["baseUrl"]),
-            "method": http["method"],
-            "path_template": http["path"],
-            "timeout_ms": http.get("timeoutMs", 5000),
-            "path_params": _PATH_PARAM.findall(http["path"]),
-            "auth_type": auth.get("type", "none"),
-            "secret_ref": auth.get("secretRef", ""),
-            "auth_header": auth.get("header", "x-api-key"),
-            "response_fields": sorted(response_schema.get("properties", {})),
-        }
-        return _env.get_template("http_tool.py.j2").render(**context)
+        return _env.get_template("http_tool.py.j2").render(**_http_context(entry))
 
     if kind == "none":
-        context = {**_common(entry), "handler": binding["handler"]}
+        context = {**_common(entry), "handler": entry.binding["handler"]}
         return _env.get_template("builtin_tool.py.j2").render(**context)
 
     raise ValueError(f"{entry.name}: unsupported binding type {kind!r}")
 
 
 def required_secrets(entry: ToolEntry) -> list[str]:
-    """Secret names this tool's generated code will read from its environment.
+    """Environment variables this tool's generated code is allowed to read.
 
-    The sandbox injects these and nothing else.
+    The sandbox injects these and nothing else, so a tool cannot reach a
+    credential it never asked for. The name comes from the engine's upstream
+    table, never from the contract -- a contract cannot request a token.
     """
     if entry.binding.get("type") != "http":
         return []
-    ref = (entry.binding.get("http", {}).get("auth", {}) or {}).get("secretRef")
-    return [ref] if ref else []
+    upstream = resolve_upstream(entry.http.get("api"))
+    return [upstream.token_env] if upstream else []

@@ -1,8 +1,9 @@
-"""Paths, ports, secret resolution, and where approved contracts come from."""
+"""Paths, ports, upstream APIs, and where approved contracts come from."""
 
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -28,9 +29,48 @@ MCP_URL = f"http://{MCP_HOST}:{MCP_PORT}/mcp"
 
 DEV_OFFLINE = os.environ.get("DEV_OFFLINE", "1") == "1"
 
-BASE_URL_OVERRIDES = {
-    "https://api.partner.example": f"http://127.0.0.1:{MOCK_API_PORT}",
+
+# --------------------------------------------------------------------------
+# Upstream APIs
+# --------------------------------------------------------------------------
+# A contract names an upstream (`binding.http.api`) and stops there. It carries
+# no host and no credential -- which is the whole point: a contributor cannot
+# point a merchant's OAuth token at a server of their choosing, and the day
+# Salla moves a host or rotates a token, nothing in the registry has to change.
+#
+# Adding an upstream is a change to THIS table, reviewed in THIS repo, by the
+# people who hold the credentials. That is the trust boundary.
+
+
+@dataclass(frozen=True)
+class Upstream:
+    """One API this engine knows how to call."""
+
+    name: str
+    base_url: str
+    token_env: str
+    auth_scheme: str = "bearer"
+    # Where DEV_OFFLINE sends the calls instead. The mock speaks the same
+    # envelope, so the generated code is identical either way.
+    mock_base_url: str | None = None
+    docs: str = ""
+
+
+UPSTREAMS: dict[str, Upstream] = {
+    "salla": Upstream(
+        name="salla",
+        base_url="https://api.salla.dev/admin/v2",
+        token_env="SALLA_ACCESS_TOKEN",
+        auth_scheme="bearer",
+        mock_base_url=f"http://127.0.0.1:{MOCK_API_PORT}/admin/v2",
+        docs="https://docs.salla.dev/",
+    ),
 }
+
+# The schema defaults `binding.http.api` to this, so a contract that omits the
+# field means Salla. Kept in sync with tool-contract.v1.json by convention --
+# the loader reports an unknown upstream loudly either way.
+DEFAULT_UPSTREAM = "salla"
 
 
 class ContractSource:
@@ -72,21 +112,40 @@ def resolve_contract_source() -> ContractSource:
     return ContractSource("registry-file", VENDORED_REGISTRY, "vendored registry.generated.json")
 
 
-def resolve_base_url(base_url: str) -> str:
-    if DEV_OFFLINE:
-        return BASE_URL_OVERRIDES.get(base_url.rstrip("/"), base_url)
-    return base_url
+def resolve_upstream(api: str | None) -> Upstream | None:
+    """Look up a contract's target upstream, or None if this engine has no such API.
 
-
-def resolve_secret(secret_ref: str) -> str:
-    """Look up a declared secret by name.
-
-    Contracts reference secrets, never carry them. A missing secret is not fatal
-    for the POC -- the mock partner API accepts anything -- but it is loud, so a
-    real misconfiguration does not look like a working demo.
+    Returning None rather than raising lets the registry skip one unrunnable
+    contract with a reason instead of taking the whole catalog offline.
     """
-    value = os.environ.get(secret_ref)
+    return UPSTREAMS.get(api or DEFAULT_UPSTREAM)
+
+
+def upstream_base_url(upstream: Upstream) -> str:
+    """The host the generated code will actually call.
+
+    Resolved at generation time, so the code in the demo's right pane names the
+    host it really talks to -- no hidden indirection between what the audience
+    reads and what runs.
+    """
+    if DEV_OFFLINE and upstream.mock_base_url:
+        return upstream.mock_base_url
+    return upstream.base_url
+
+
+def resolve_token(upstream: Upstream) -> str:
+    """The credential for an upstream, read from this engine's environment.
+
+    Contracts declare the scopes a credential must carry; they never name, hold,
+    or route one. A missing token is not fatal for the POC -- the offline mock
+    accepts anything -- but it says so, so a real misconfiguration cannot pass
+    for a working demo.
+    """
+    value = os.environ.get(upstream.token_env)
     if value:
         return value
-    print(f"[config] secretRef {secret_ref} is not set; sending a placeholder token.")
-    return f"missing-secret:{secret_ref}"
+    print(
+        f"[config] {upstream.token_env} is not set; "
+        f"calls to {upstream.name} will carry a placeholder token."
+    )
+    return f"missing-token:{upstream.token_env}"

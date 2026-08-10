@@ -8,7 +8,7 @@ dependencies = [
     "httpx>=0.28",
     "jinja2>=3.1",
     "python-dotenv>=1.0",
-    # The mock partner API that lets the demo run offline.
+    # The mock upstream that lets the demo run offline.
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
 ]
@@ -18,7 +18,7 @@ dev = ["pytest>=8.3", "pytest-asyncio>=0.24"]
 
 [project.scripts]
 cm-engine = "cm_engine.server:main"
-cm-mock-api = "cm_engine.mock_partner_api:main"
+cm-mock-api = "cm_engine.mock_upstream:main"
 
 [build-system]
 requires = ["hatchling"]

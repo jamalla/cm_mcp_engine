@@ -18,18 +18,22 @@ catches before a bad registry is ever pinned.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from cm_engine.config import ContractSource, resolve_contract_source
+from cm_engine.config import ContractSource, UPSTREAMS, resolve_contract_source, resolve_upstream
 
 SUPPORTED_BINDINGS = {"http", "none"}
+SUPPORTED_KINDS = {"single-tool"}
+
+_PATH_PLACEHOLDER = re.compile(r"\{([^}]+)\}")
 
 
 @dataclass(frozen=True)
 class ToolEntry:
-    """One executable tool. A multi-tool package expands into several of these."""
+    """One executable tool -- one contract, one upstream endpoint."""
 
     name: str
     version: str
@@ -38,7 +42,6 @@ class ToolEntry:
     governance: dict[str, Any]
     validation: dict[str, Any]
     raw: dict[str, Any]
-    package: str | None = None
 
     @property
     def key(self) -> str:
@@ -46,12 +49,31 @@ class ToolEntry:
         return f"{self.name}@{self.version}"
 
     @property
+    def annotations(self) -> dict[str, Any]:
+        """MCP's ToolAnnotations, as declared. Served to clients verbatim.
+
+        They live under `interface` because they are part of the MCP tool
+        declaration, not our policy layer -- and they are read here, in one
+        place, so caching and the served hints can never disagree.
+        """
+        return self.interface.get("annotations", {})
+
+    @property
     def read_only(self) -> bool:
-        return bool(self.governance.get("annotations", {}).get("readOnly"))
+        return bool(self.annotations.get("readOnlyHint"))
 
     @property
     def destructive(self) -> bool:
-        return bool(self.governance.get("annotations", {}).get("destructive"))
+        return bool(self.annotations.get("destructiveHint"))
+
+    @property
+    def http(self) -> dict[str, Any]:
+        """The http binding body, or an empty dict for a builtin."""
+        return self.binding.get("http") or {}
+
+    @property
+    def scopes(self) -> list[str]:
+        return list(self.http.get("auth", {}).get("scopes", []))
 
     @property
     def needs_approval(self) -> bool:
@@ -89,8 +111,7 @@ class ToolEntry:
             "whenToUse": self.interface.get("whenToUse", []),
             "whenNotToUse": self.interface.get("whenNotToUse", []),
             "inputSchema": self.input_schema,
-            "annotations": self.governance.get("annotations", {}),
-            "package": self.package,
+            "annotations": self.annotations,
         }
 
     def raw_contract(self) -> dict[str, Any]:
@@ -118,10 +139,7 @@ def executability_problems(entry: ToolEntry) -> list[str]:
             f"(supported: {sorted(SUPPORTED_BINDINGS)})"
         )
     elif binding_type == "http":
-        http = entry.binding.get("http") or {}
-        for field in ("baseUrl", "method", "path"):
-            if not http.get(field):
-                problems.append(f"binding.http.{field} is missing")
+        problems += _http_problems(entry)
     elif binding_type == "none":
         from cm_engine.engine.builtins import BUILTINS
 
@@ -132,8 +150,52 @@ def executability_problems(entry: ToolEntry) -> list[str]:
                 f"(this engine provides: {sorted(BUILTINS)})"
             )
 
-    if not entry.governance.get("annotations"):
-        problems.append("governance.annotations is missing, so caching cannot be decided safely")
+    if "readOnlyHint" not in entry.annotations:
+        problems.append(
+            "interface.annotations.readOnlyHint is missing, so caching cannot be decided safely"
+        )
+
+    return problems
+
+
+def _http_problems(entry: ToolEntry) -> list[str]:
+    """What would stop this engine from building the HTTP call."""
+    problems: list[str] = []
+    http = entry.http
+
+    for field in ("method", "path"):
+        if not http.get(field):
+            problems.append(f"binding.http.{field} is missing")
+
+    # The contract selects an upstream by name; this engine owns the host and the
+    # credential behind that name. An upstream it has never been configured for
+    # is the one gate the contracts repo genuinely cannot run for us.
+    api = http.get("api")
+    if resolve_upstream(api) is None:
+        problems.append(
+            f"binding.http.api {api!r} is not an upstream this engine is configured for "
+            f"(configured: {sorted(UPSTREAMS)})"
+        )
+
+    response = http.get("response") or {}
+    if not response.get("dataPath"):
+        problems.append(
+            "binding.http.response.dataPath is missing, so the engine cannot tell "
+            "the payload from the envelope around it"
+        )
+
+    if not entry.scopes:
+        problems.append("binding.http.auth.scopes is empty, so no credential can be authorized")
+
+    # Every {placeholder} in the path needs a mapping saying which tool argument
+    # fills it -- without one there is nothing to interpolate and the request
+    # would be sent with a literal brace in the URL.
+    mapped = {m.get("name") for m in (http.get("parameters", {}).get("path") or [])}
+    for placeholder in _PATH_PLACEHOLDER.findall(http.get("path") or ""):
+        if placeholder not in mapped:
+            problems.append(
+                f"path placeholder {{{placeholder}}} has no binding.http.parameters.path entry"
+            )
 
     return problems
 
@@ -177,31 +239,25 @@ class Catalog:
 
 
 def entries_from_contract(contract: dict[str, Any]) -> list[ToolEntry]:
-    """Expand one contract document into the tools it defines."""
-    version = contract.get("contractVersion", "0.0.0")
-    kind = contract.get("kind")
+    """The tool a contract document defines.
 
-    if kind == "multi-tool":
-        package = contract.get("package", {}).get("name")
-        bodies = [(tool, package) for tool in contract.get("tools", [])]
-    elif kind == "single-tool":
-        bodies = [(contract, None)]
-    else:
-        # openapi-import declares intent for the converter, not a runnable tool.
+    A list rather than a single entry because `kind` decides: today only
+    single-tool is executable, and an unrecognized kind yields nothing rather
+    than a half-built tool. Multi-tool packages are future work in both repos.
+    """
+    if contract.get("kind") not in SUPPORTED_KINDS:
         return []
 
     return [
         ToolEntry(
-            name=body.get("interface", {}).get("name", ""),
-            version=version,
-            interface=body.get("interface", {}),
-            binding=body.get("binding", {}),
-            governance=body.get("governance", {}),
-            validation=body.get("validation", {}),
+            name=contract.get("interface", {}).get("name", ""),
+            version=contract.get("contractVersion", "0.0.0"),
+            interface=contract.get("interface", {}),
+            binding=contract.get("binding", {}),
+            governance=contract.get("governance", {}),
+            validation=contract.get("validation", {}),
             raw=contract,
-            package=package,
         )
-        for body, package in bodies
     ]
 
 
@@ -216,8 +272,7 @@ def _documents(source: ContractSource) -> list[tuple[str, dict[str, Any]]]:
             )
         payload = json.loads(source.path.read_text(encoding="utf-8"))
         return [
-            (c.get("interface", {}).get("name") or c.get("package", {}).get("name", "?"), c)
-            for c in payload.get("contracts", [])
+            (c.get("interface", {}).get("name") or "?", c) for c in payload.get("contracts", [])
         ]
 
     if not source.path.is_dir():
@@ -250,6 +305,11 @@ def load_catalog(source: ContractSource | None = None) -> Catalog:
 
         entries = entries_from_contract(document)
         if not entries:
+            kind = document.get("kind")
+            catalog.warn(
+                f"{label}: skipped -- kind {kind!r} is not executable by this engine "
+                f"(supported: {sorted(SUPPORTED_KINDS)})"
+            )
             continue
 
         for entry in entries:
