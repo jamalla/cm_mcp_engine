@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Tests
+        # Pinned fixtures only -- there is no contracts checkout in CI, and
+        # depending on one would re-couple the repositories.
+        run: uv run --extra dev pytest -q
+
+      - name: The pinned registry is still executable
+        # Guards against a code change that breaks a contract already in
+        # production, which the contracts repo cannot detect.
+        if: hashFiles('registry.generated.json') != ''
+        run: uv run python scripts/check_registry.py registry.generated.json

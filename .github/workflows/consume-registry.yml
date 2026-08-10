@@ -1,0 +1,113 @@
+# The receiving half of the cross-repo pipeline.
+#
+# cm_mcp_contracts can approve a contract that is perfectly schema-valid and
+# still unrunnable here -- `builtin://forecast_weather` with no such handler, an
+# unsupported binding type, a template that will not render. Only this repo can
+# answer that, so this is where the new registry is proved before it is pinned.
+#
+# Fired by a repository_dispatch from the contracts repo on publish, on a daily
+# schedule as a safety net if the dispatch token is missing or a delivery is
+# lost, and manually.
+#
+# SETUP: if cm_mcp_contracts is private, add a token that can read its releases
+# as CONTRACTS_READ_TOKEN. For a public contracts repo, GITHUB_TOKEN is enough.
+name: consume-registry
+
+on:
+  repository_dispatch:
+    types: [contracts-updated]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag in cm_mcp_contracts (default: registry-latest)'
+        required: false
+        default: 'registry-latest'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  CONTRACTS_REPO: ${{ github.repository_owner }}/cm_mcp_contracts
+
+jobs:
+  verify-and-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Work out which registry to fetch
+        id: pick
+        run: |
+          TAG="${{ github.event.client_payload.tag }}"
+          [ -z "$TAG" ] && TAG="${{ inputs.tag }}"
+          [ -z "$TAG" ] && TAG="registry-latest"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Fetching $TAG from $CONTRACTS_REPO"
+
+      - name: Download the published registry
+        env:
+          GH_TOKEN: ${{ secrets.CONTRACTS_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ steps.pick.outputs.tag }}" \
+            --repo "$CONTRACTS_REPO" \
+            --pattern 'registry.generated.json' \
+            --output candidate-registry.json --clobber
+
+      - name: Verify this engine can execute every contract
+        # The gate. A registry with a tool we cannot run never gets pinned.
+        run: uv run python scripts/check_registry.py candidate-registry.json
+
+      - name: Run the engine's own tests against the candidate
+        # Codegen passing is necessary, not sufficient -- this proves the tools
+        # actually load and serve over MCP.
+        env:
+          CM_REGISTRY_FILE: candidate-registry.json
+        run: uv run --extra dev pytest -q tests/test_mcp_surface.py
+
+      - name: Has anything actually changed?
+        id: diff
+        run: |
+          if [ -f registry.generated.json ] && diff -q registry.generated.json candidate-registry.json >/dev/null; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Pinned registry is already up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pin the new registry
+        if: steps.diff.outputs.changed == 'true'
+        run: mv candidate-registry.json registry.generated.json
+
+      - name: Open a PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: registry/${{ steps.pick.outputs.tag }}
+          # A PR rather than a direct push: pinning a new registry changes which
+          # tools this service serves in production, which deserves a human
+          # glance even though a machine already proved it runs.
+          title: 'Registry update: ${{ steps.pick.outputs.tag }}'
+          commit-message: 'Pin registry ${{ steps.pick.outputs.tag }}'
+          body: |
+            Automated pin of the registry published by `${{ env.CONTRACTS_REPO }}`.
+
+            | | |
+            |---|---|
+            | tag | `${{ steps.pick.outputs.tag }}` |
+            | contracts commit | `${{ github.event.client_payload.commit || 'n/a' }}` |
+            | tools | ${{ github.event.client_payload.tools || 'see diff' }} |
+
+            Verified before opening:
+
+            - every contract generates code this engine can run
+            - every `builtin://` handler it names exists here
+            - the MCP surface loads and serves the registry
+
+            Merging changes which tools this engine serves.
+          labels: registry, automated

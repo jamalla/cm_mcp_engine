@@ -1,0 +1,14 @@
+# Replace @owner with a real handle or team before enabling branch protection.
+
+* @owner
+
+# Changing what this engine can execute decides which contracts the registry
+# can accept, so it is upstream of another repository's gate.
+/cm_engine/engine/builtins.py   @owner
+/cm_engine/registry/loader.py   @owner
+/scripts/check_registry.py      @owner
+/.github/**                     @owner
+
+# Pinned by the consume-registry bot after it proves the registry runs here.
+# Merging one changes which tools production serves.
+/registry.generated.json        @owner

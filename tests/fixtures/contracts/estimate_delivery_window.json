@@ -1,0 +1,78 @@
+{
+  "$schema": "../schema/tool-contract.v1.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+
+  "interface": {
+    "name": "estimate_delivery_window",
+    "title": "Estimate Delivery Window",
+    "description": "Estimates a delivery window in business days from a destination zone and shipping speed, with no external API call.",
+    "whenToUse": [
+      "The user asks how long delivery will take or when a package should arrive.",
+      "The user has not shipped yet and wants an estimate before ordering."
+    ],
+    "whenNotToUse": [
+      "The user is asking about a specific existing order -- use get_order_status instead.",
+      "The user wants a guaranteed delivery date rather than an estimate."
+    ],
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "zone": {
+            "type": "string",
+            "description": "Destination zone: domestic, regional, or international."
+          },
+          "speed": {
+            "type": "string",
+            "description": "Shipping speed: standard, express, or overnight."
+          }
+        },
+        "required": ["zone"],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "zone": { "type": "string" },
+          "speed": { "type": "string" },
+          "minDays": { "type": "integer" },
+          "maxDays": { "type": "integer" },
+          "summary": { "type": "string" }
+        },
+        "required": ["zone", "minDays", "maxDays"]
+      },
+      "ui": {
+        "display": "card",
+        "title": "Delivery estimate ({zone})",
+        "primary": "{summary}",
+        "secondary": "Speed: {speed}"
+      }
+    }
+  },
+
+  "binding": {
+    "type": "none",
+    "handler": "builtin://estimate_delivery_window"
+  },
+
+  "validation": {
+    "rules": [
+      {
+        "field": "zone",
+        "match": "^(domestic|regional|international)$",
+        "message": "zone must be one of: domestic, regional, international"
+      }
+    ]
+  },
+
+  "dependencies": [],
+
+  "governance": {
+    "annotations": { "readOnly": true, "destructive": false, "idempotent": true, "openWorld": false },
+    "execution": { "mode": "direct", "humanApproval": "never" },
+    "caching": { "cacheable": true, "keyBy": ["zone", "speed"], "ttlSeconds": 600 }
+  }
+}
