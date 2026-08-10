@@ -65,7 +65,14 @@ async def main() -> int:
         print(f"arguments are not valid JSON: {exc}")
         return 2
 
-    executor = Executor()
+    try:
+        executor = Executor()
+    except FileNotFoundError as exc:
+        # No contracts source resolved. Worth saying plainly: this engine serves
+        # what the pipeline published, and there is nothing to serve yet.
+        print(exc)
+        return 2
+
     try:
         entry = executor.registry.catalog.get(parsed.tool)
     except KeyError as exc:
