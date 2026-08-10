@@ -392,8 +392,8 @@ def _documents(source: ContractSource) -> list[tuple[str, dict[str, Any]]]:
     for path in sorted(source.path.rglob("*.json")):
         try:
             documents.append((path.name, json.loads(path.read_text(encoding="utf-8"))))
-        except json.JSONDecodeError as exc:
-            documents.append((path.name, {"__error__": str(exc)}))
+        except json.JSONDecodeError as exc:  # noqa: PERF203 - one bad file, not a batch
+            documents.append((path.name, {"__error__": f"not valid JSON -- {exc}"}))
     return documents
 
 
@@ -408,7 +408,10 @@ def load_catalog(source: ContractSource | None = None) -> Catalog:
 
     for label, document in _documents(source):
         if "__error__" in document:
-            catalog.warn(f"{label}: not valid JSON -- {document['__error__']}")
+            # The error channel carries every reason a document did not survive
+            # reading -- a hash mismatch, an unlisted file, a bad path -- so the
+            # message comes from whoever detected it rather than being guessed here.
+            catalog.warn(f"{label}: {document['__error__']}")
             continue
 
         entries = entries_from_contract(document)
