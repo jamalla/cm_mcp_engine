@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-08-10T12:47:31+00:00",
+  "generatedAt": "2026-08-10T13:10:58+00:00",
   "sourceRepo": "cm_mcp_contracts",
-  "sourceCommit": "a27ff3b1ff0d974703705c8a7d6ef6233f672bdd",
+  "sourceCommit": "65826f3324172a6faa6dabca133bf1ab964cb4f1",
   "schemaId": "https://contract-mcp.example/schemas/tool-contract.v1.json",
   "layout": "index",
   "toolCount": 1,
