@@ -17,7 +17,6 @@ catches before a bad registry is ever pinned.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -48,24 +47,6 @@ class ToolEntry:
     def key(self) -> str:
         """This tool's identity, as a human reads it in a log or a trace."""
         return f"{self.name}@{self.version}"
-
-    @property
-    def fingerprint(self) -> str:
-        """A short digest of the contract as published.
-
-        Nothing forces a contributor to bump contractVersion when they edit a
-        contract, so `name@version` alone is not a safe cache identity: a
-        corrected contract would be served with the code generated from the
-        version it replaced, which is the kind of bug that only shows up as a
-        wrong answer. Content decides.
-        """
-        canonical = json.dumps(self.raw, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
-
-    @property
-    def cache_id(self) -> str:
-        """Cache key namespace: a version bump OR any edit retires stale code."""
-        return f"{self.key}+{self.fingerprint}"
 
     @property
     def annotations(self) -> dict[str, Any]:

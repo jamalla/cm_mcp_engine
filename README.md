@@ -48,6 +48,36 @@ With `DEV_OFFLINE=1` (the default) every upstream resolves to `cm_engine/mock_up
 same envelope, same pagination, same error shape, so the generated code is identical either way.
 Credentials go in `.env`; see `.env.example`.
 
+## How a credential reaches a call — and how it doesn't
+
+Four rules, each of which is a security property rather than a preference:
+
+1. **The contract names an upstream and a set of scopes. Nothing else.** No host, no credential, no
+   way to express one. Least privilege is reviewable because the ask is in the diff.
+2. **The generated module carries the *name* of an environment variable, never a value.**
+   `TOKEN_ENV = 'SALLA_ACCESS_TOKEN'` and `headers["authorization"] = f"Bearer {os.environ.get(TOKEN_ENV, '')}"`.
+   Generated code is cached on disk and shown to an audience; a token in it would be a token in both.
+3. **The sandbox environment is an allowlist plus this tool's one credential.** A tool cannot read a
+   secret it never asked for, and cannot read another upstream's at all.
+4. **The principal — whose store, whose token, whose cached results — is decided by the engine, never
+   by the arguments.** Tool arguments are written by a language model, so anything reachable from
+   them is reachable by whoever can put text in front of it. `_principal()` in
+   [server.py](cm_engine/server.py) is where a deployment maps an authenticated MCP session to the
+   merchant install behind it. [tests/test_principal.py](tests/test_principal.py) pins the
+   confused-deputy case: an argument called `principal` changes nothing.
+
+Cache identity follows from the same reasoning. The result cache keys on the tool, the **generation**
+(a digest of everything the code was generated from, engine-side resolution included), the
+**principal**, and the arguments `keyBy` names — so a corrected contract cannot be answered from its
+predecessor's results, turning `DEV_OFFLINE` off cannot serve a module aimed at the mock, and two
+merchants asking the same question cannot see each other's data. The code cache omits the principal
+on purpose: the module is identical for everyone precisely because the credential is not in it.
+
+**What a production deployment replaces**, all behind `CredentialProvider.resolve` in
+[credentials.py](cm_engine/credentials.py): one token per install rather than per process (Salla
+issues one per store, with a refresh token and an expiry), storage in a secrets manager rather than a
+process environment, and rotation. Nothing above that seam moves.
+
 ## What it does with them
 
 - **code_mode** — deterministic template fill, no LLM. The contract already declares the endpoint,
@@ -136,8 +166,12 @@ upgrade breaks the demo, that file fails first.
 
 - **The sandbox is not a security boundary.** A subprocess with a timeout and a scrubbed
   environment stops accidents and runaway loops, not untrusted code.
-- **One credential per upstream.** A real deployment resolves the *installing merchant's* token per
-  call; this reads one token from the environment.
+- **One credential per upstream, and one principal.** The seam is right and the implementation is a
+  single environment variable: `EnvCredentials` ignores the principal because there is only one, and
+  `_principal()` returns a constant because there is no session to map. Multi-tenant needs both
+  replaced — and until then the tenant-scoped cache keys are correct but untested against real
+  traffic.
+- **No token refresh.** Salla access tokens expire; nothing here renews one.
 - **`retryable` is surfaced, not acted on.** The engine reports that retrying may help and leaves the
   decision to the caller.
 - **`dependencies` is declared but not resolved** — the schema models it; the engine ignores it.

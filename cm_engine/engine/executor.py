@@ -17,7 +17,8 @@ from typing import Any
 from cm_engine import events as ev
 from cm_engine.cache.code_cache import CodeCache
 from cm_engine.cache.result_cache import ResultCache, cache_key, is_cacheable
-from cm_engine.config import resolve_upstream, resolve_token, upstream_base_url
+from cm_engine.config import resolve_upstream, upstream_base_url
+from cm_engine.credentials import Principal, default_principal, provider
 from cm_engine.engine import codemode
 from cm_engine.engine.sandbox import run_module
 from cm_engine.events import Emitter, EmitSink
@@ -67,7 +68,12 @@ class Executor:
         run_id: str,
         sink: EmitSink,
         approval_token: str | None = None,
+        principal: Principal | None = None,
     ) -> ExecutionOutcome:
+        # On whose behalf. A keyword argument of this method and never a member of
+        # `args`, because `args` is what a language model chose -- letting it name
+        # the principal would let a prompt decide whose data comes back.
+        principal = principal or default_principal()
         emitter = Emitter(run_id, sink)
         started = time.perf_counter()
 
@@ -88,7 +94,8 @@ class Executor:
             uiHint=entry.interface.get("response", {}).get("ui"),
         )
 
-        key = cache_key(entry, args)
+        generation = codemode.generation_id(entry)
+        key = cache_key(entry, args, generation=generation, principal=principal.cache_scope)
 
         # --- the cache-hit short circuit --------------------------------
         if is_cacheable(entry):
@@ -136,12 +143,16 @@ class Executor:
                 return ExecutionOutcome("error", error=message, duration_ms=elapsed())
 
         # --- code cache + codegen ---------------------------------------
+        # The generated module carries no credential -- only the NAME of the
+        # environment variable the sandbox will fill -- so one cached module
+        # serves every principal. The token is injected per call, below.
+        code_key = f"{entry.key}+{generation}"
         try:
-            source = self.code_cache.get(entry.cache_id)
+            source = self.code_cache.get(code_key)
             from_cache = source is not None
             if source is None:
                 source = codemode.generate(entry)
-            module_path = self.code_cache.put(entry.cache_id, source)
+            module_path = self.code_cache.put(code_key, source)
         except Exception as exc:  # noqa: BLE001 - surfaced as an error event
             message = f"code generation failed: {exc}"
             await emitter.emit(ev.ERROR, stage=ev.CODE_GENERATED, message=message)
@@ -152,13 +163,18 @@ class Executor:
             code=source,
             fromCache=from_cache,
             language="python",
-            cacheKey=entry.cache_id,
+            cacheKey=code_key,
         )
 
         # --- execute -----------------------------------------------------
-        await emitter.emit(ev.EXECUTING, tool=entry.name, binding=entry.binding.get("type"))
+        await emitter.emit(
+            ev.EXECUTING,
+            tool=entry.name,
+            binding=entry.binding.get("type"),
+            principal=str(principal),
+        )
 
-        injected = self._credentials(entry)
+        injected = self._credentials(entry, principal)
         sandbox = await run_module(module_path, args, secrets=injected)
 
         if not sandbox.ok:
@@ -187,12 +203,16 @@ class Executor:
     # -- helpers ----------------------------------------------------------
 
     @staticmethod
-    def _credentials(entry: ToolEntry) -> dict[str, str]:
-        """The env the sandbox may see: this tool's upstream token, nothing else."""
-        return {
-            name: resolve_token(resolve_upstream(entry.http.get("api")))
-            for name in codemode.required_secrets(entry)
-        }
+    def _credentials(entry: ToolEntry, principal: Principal) -> dict[str, str]:
+        """The env the sandbox may see: this tool's upstream token, nothing else.
+
+        Resolved per call rather than per process, so a provider that mints or
+        refreshes a per-install token drops straight in.
+        """
+        upstream = resolve_upstream(entry.http.get("api"))
+        if upstream is None:
+            return {}
+        return {name: provider.resolve(upstream, principal) for name in codemode.required_secrets(entry)}
 
     @staticmethod
     def _proposal_preview(entry: ToolEntry, args: dict[str, Any]) -> str:

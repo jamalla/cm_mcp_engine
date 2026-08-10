@@ -36,20 +36,27 @@ def is_cacheable(entry) -> bool:
     return bool(entry.read_only) and bool(entry.caching.get("cacheable"))
 
 
-def cache_key(entry, args: dict[str, Any]) -> str:
-    """The tool's cache identity plus the args that `caching.keyBy` says matter.
+def cache_key(entry, args: dict[str, Any], *, generation: str, principal: str) -> str:
+    """Everything that must match before a stored result may be reused.
 
-    keyBy lets a contract declare that only some arguments affect the result --
-    a page size or a trace id should not fragment the cache.
+    Four things, and each one is a bug if left out:
 
-    The identity is `entry.cache_id`, which folds in a digest of the contract, so
-    a corrected contract cannot be answered from results its predecessor cached.
+    * **the tool** -- `entry.key`, so two tools cannot collide;
+    * **the generation** -- a digest of what the code was generated from, so a
+      corrected contract or a redirected upstream cannot be answered from the
+      previous version's results;
+    * **the principal** -- so two merchants asking the same question never see
+      each other's data. This is the one that would be a breach rather than a
+      bug, so it is a required argument with no default;
+    * **the arguments** `caching.keyBy` says matter -- keyBy lets a contract
+      declare that only some arguments affect the result, so a trace id does not
+      fragment the cache.
     """
     key_by = entry.caching.get("keyBy")
     relevant = {k: args[k] for k in key_by if k in args} if key_by else dict(args)
     canonical = json.dumps(relevant, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(f"{entry.cache_id}|{canonical}".encode()).hexdigest()[:16]
-    return f"{entry.key}:{digest}"
+    material = f"{entry.key}|{generation}|{principal}|{canonical}"
+    return f"{entry.key}:{hashlib.sha256(material.encode()).hexdigest()[:16]}"
 
 
 class ResultCache:

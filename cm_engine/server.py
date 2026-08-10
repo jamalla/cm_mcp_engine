@@ -19,6 +19,7 @@ from fastmcp.tools import FunctionTool
 from mcp.types import ToolAnnotations
 
 from cm_engine.config import MCP_HOST, MCP_PORT
+from cm_engine.credentials import Principal, default_principal
 from cm_engine.engine.executor import Executor
 from cm_engine.events import StageEvent
 from cm_engine.registry.loader import Registry, ToolEntry
@@ -81,6 +82,17 @@ def _input_schema(entry: ToolEntry) -> dict[str, Any]:
     return schema
 
 
+def _principal() -> Principal:
+    """Who this call is made on behalf of.
+
+    Derived here, from the server's own view of the caller -- deliberately not
+    from the tool's arguments, which a language model wrote. A deployment maps
+    the authenticated MCP session to the merchant install behind it and returns
+    that; this POC serves a single store and says so.
+    """
+    return default_principal()
+
+
 def _build_tool(entry: ToolEntry) -> FunctionTool:
     async def handler(**kwargs: Any) -> dict[str, Any]:
         run_id = kwargs.pop("run_id", None) or f"run-{entry.name}"
@@ -92,6 +104,7 @@ def _build_tool(entry: ToolEntry) -> FunctionTool:
             run_id=run_id,
             sink=_ctx_sink,
             approval_token=approval_token,
+            principal=_principal(),
         )
         return {
             "status": outcome.status,

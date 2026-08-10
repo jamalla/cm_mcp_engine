@@ -224,13 +224,52 @@ def test_destructive_tools_are_never_cacheable(catalog):
     assert is_cacheable(catalog.get("list_categories"))
 
 
+def _key(entry, args, generation="g1", principal="store-a"):
+    return cache_key(entry, args, generation=generation, principal=principal)
+
+
 def test_cache_key_respects_key_by(catalog):
     entry = catalog.get("list_categories")  # keyBy: page, keyword, status
-    a = cache_key(entry, {"page": 1, "run_hint": "x"})
-    b = cache_key(entry, {"page": 1, "run_hint": "y"})
-    c = cache_key(entry, {"page": 2})
+    a = _key(entry, {"page": 1, "run_hint": "x"})
+    b = _key(entry, {"page": 1, "run_hint": "y"})
+    c = _key(entry, {"page": 2})
     assert a == b, "an argument outside keyBy must not fragment the cache"
     assert a != c
+
+
+def test_two_principals_never_share_a_cached_result(catalog):
+    """The one cache mistake that would be a breach rather than a bug.
+
+    Two stores asking the identical question must not see each other's answer,
+    and the principal in the key is the only thing standing between them.
+    """
+    entry = catalog.get("list_categories")
+    args = {"page": 1}
+    assert _key(entry, args, principal="store-a") != _key(entry, args, principal="store-b")
+
+
+def test_a_redirected_upstream_retires_cached_code_and_results(catalog, monkeypatch):
+    """Turning DEV_OFFLINE off must not hand back the module aimed at the mock.
+
+    The contract is unchanged, so a contract-only cache identity would reuse
+    code compiled against 127.0.0.1 while the engine believes it is calling the
+    store. The generation digest covers the engine's own resolution too.
+    """
+    from cm_engine import config
+
+    entry = catalog.get("list_categories")
+    offline_id = codemode.generation_id(entry)
+    offline_source = codemode.generate(entry)
+
+    monkeypatch.setattr(config, "DEV_OFFLINE", False)
+    live_id = codemode.generation_id(entry)
+    live_source = codemode.generate(entry)
+
+    assert "127.0.0.1" in offline_source and "api.salla.dev" in live_source
+    assert offline_id != live_id
+    assert _key(entry, {"page": 1}, generation=offline_id) != _key(
+        entry, {"page": 1}, generation=live_id
+    )
 
 
 def test_result_cache_honours_ttl():
@@ -266,15 +305,26 @@ def test_an_edited_contract_does_not_reuse_the_old_generated_code(catalog):
 
     original = catalog.get("list_categories")
     edited_doc = _contract("list_categories")
-    edited_doc["interface"]["input"]["schema"]["required"] = []
+    edited_doc["interface"]["input"]["schema"]["required"] = ["page", "keyword"]
     (edited,) = entries_from_contract(edited_doc)
 
     assert edited.key == original.key, "same name, same version -- that is the trap"
-    assert edited.cache_id != original.cache_id
+    assert codemode.generation_id(edited) != codemode.generation_id(original)
     assert codemode.generate(edited) != codemode.generate(original)
 
     # And a cached result cannot cross the edit either.
-    assert cache_key(edited, {"page": 1}) != cache_key(original, {"page": 1})
+    assert _key(edited, {"page": 1}, generation=codemode.generation_id(edited)) != _key(
+        original, {"page": 1}, generation=codemode.generation_id(original)
+    )
+
+
+def test_prose_only_edits_do_not_pointlessly_retire_the_cache(catalog):
+    """A reworded hint changes what the agent is told, not what the code does."""
+    original = catalog.get("list_categories")
+    reworded = _contract("list_categories")
+    reworded["interface"]["whenToUse"].append("Another way of asking the same thing.")
+
+    assert codemode.generation_id(_entry(reworded)) == codemode.generation_id(original)
 
 
 # -- executor ---------------------------------------------------------------
