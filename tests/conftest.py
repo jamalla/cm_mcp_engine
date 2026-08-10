@@ -11,6 +11,7 @@ Real contracts are exercised separately, and more meaningfully, by
 """
 
 import os
+import socket
 import threading
 import time
 from pathlib import Path
@@ -38,6 +39,21 @@ os.environ["DEV_OFFLINE"] = "1"
 os.environ["SALLA_ACCESS_TOKEN"] = "test-token-not-a-real-one"
 
 
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+# The suite runs its own upstream on its own port. `dev.ps1` holds 8787 while a
+# developer has the demo up, and the two must not meet: binding fails, and the
+# instance already there carries state from whatever has been run against it --
+# a category this suite deletes stays deleted, so the next run reads a 404 and
+# blames the engine. The upstream table picks this up because it is read before
+# cm_engine.config is imported.
+os.environ["MOCK_API_PORT"] = str(_free_port())
+
+
 @pytest.fixture(scope="session")
 def mock_upstream():
     """Run the offline upstream in-process for tests that exercise http bindings.
@@ -53,17 +69,6 @@ def mock_upstream():
     from cm_engine.mock_upstream import app
 
     base = f"http://127.0.0.1:{MOCK_API_PORT}"
-
-    # A developer running `dev.ps1` already has this exact app on this exact port.
-    # Reuse it rather than fighting over the socket: binding would fail, and the
-    # health probe would then pass against the running one anyway, so the failure
-    # would surface later and somewhere unrelated.
-    try:
-        if httpx.get(f"{base}/healthz", timeout=1).json().get("service") == "mock-salla-admin-api":
-            yield base
-            return
-    except (httpx.HTTPError, ValueError):
-        pass
 
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=MOCK_API_PORT, log_level="error")
@@ -82,7 +87,7 @@ def mock_upstream():
         server.should_exit = True
         pytest.fail(f"mock upstream never came up on :{MOCK_API_PORT}")
 
-    yield f"http://127.0.0.1:{MOCK_API_PORT}"
+    yield base
 
     server.should_exit = True
     thread.join(timeout=5)
