@@ -14,9 +14,17 @@ load_dotenv(REPO_ROOT / ".env")
 CACHE_DIR = REPO_ROOT / ".cache"
 CODE_CACHE_DIR = CACHE_DIR / "code"
 
-# The registry artifact published by cm_mcp_contracts and pinned into this repo
-# by the consume-registry workflow. This is what a deployed engine serves.
-VENDORED_REGISTRY = REPO_ROOT / "registry.generated.json"
+# The registry artifact published by cm_mcp_contracts and pinned into this repo by
+# the consume-registry workflow. This is what a deployed engine serves.
+#
+# An index plus one file per contract, so the pin PR that updates it stays
+# reviewable when there are hundreds of tools: a diff shows which contract changed
+# rather than a churn of one enormous file.
+PINNED_REGISTRY = REPO_ROOT / "registry" / "registry.json"
+
+# The single inlined file this repo pinned before the split. Read when no index is
+# present, so an engine that has not taken a new pin PR yet keeps serving.
+LEGACY_REGISTRY = REPO_ROOT / "registry.generated.json"
 
 # Sibling checkout, for working in the container layout during development.
 SIBLING_CONTRACTS = REPO_ROOT.parent / "cm_mcp_contracts" / "contracts"
@@ -109,7 +117,10 @@ def resolve_contract_source() -> ContractSource:
             "contracts-dir", SIBLING_CONTRACTS, "sibling cm_mcp_contracts checkout"
         )
 
-    return ContractSource("registry-file", VENDORED_REGISTRY, "vendored registry.generated.json")
+    if LEGACY_REGISTRY.is_file() and not PINNED_REGISTRY.is_file():
+        return ContractSource("registry-file", LEGACY_REGISTRY, "pinned registry (legacy layout)")
+
+    return ContractSource("registry-file", PINNED_REGISTRY, "pinned registry/registry.json")
 
 
 def resolve_upstream(api: str | None) -> Upstream | None:

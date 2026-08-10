@@ -8,7 +8,7 @@ and UI live in [`cm_mcp_agent`](../cm_mcp_agent) and reach this service over MCP
 
 ```bash
 uv sync --extra dev
-uv run pytest                 # 66 tests, no network, no ports
+uv run pytest                 # 90 tests, no network, no ports
 pwsh scripts/dev.ps1          # mock upstream :8787 + FastMCP :8765
 pwsh scripts/dev.ps1 -Stop
 ```
@@ -22,14 +22,41 @@ Most explicit wins, so a developer, CI, and a deployment each get the source the
 | 1 | `CM_REGISTRY_FILE` | an explicit registry artifact |
 | 2 | `CM_CONTRACTS_DIR` | an explicit contracts directory |
 | 3 | `../cm_mcp_contracts/contracts` | auto-detected sibling checkout — local development |
-| 4 | `./registry.generated.json` | the version pinned into this repo — deployment |
+| 4 | `./registry/registry.json` | the version pinned into this repo — deployment |
 
 The engine prints which one it resolved at startup and reports it from `list_contracts`, because a
 catalog that looks wrong is almost always a source that is not what you assumed.
 
-`registry.generated.json` is absent until `consume-registry.yml` opens the first pin PR. That is the
-honest state of a fresh clone: this engine serves the registry the contracts repo published, and
-nothing until it has.
+`registry/` is absent until `consume-registry.yml` opens the first pin PR. That is the honest state
+of a fresh clone: this engine serves the registry the contracts repo published, and nothing until it
+has.
+
+### The pinned registry is an index, not one big file
+
+```
+registry/
+  registry.json                    provenance + a sha256 per contract
+  contracts/list_categories.json   the contract, exactly as published
+```
+
+One file per contract because a registry of five hundred tools inlined into a single JSON file makes
+the pin PR unreviewable — you cannot see *which* contract changed, `git blame` stops answering "who
+changed this tool", and two registry updates touching different tools conflict.
+
+The index is what makes that directory a registry rather than a folder. The engine serves **what the
+index lists**, verified byte-for-byte:
+
+| situation | what happens |
+|---|---|
+| file listed, hash matches | served |
+| file edited after publication | refused, hash mismatch named in the warning |
+| file present but unlisted | refused — unlisted means never published |
+| file listed but missing | refused, named against its tool |
+| index path escaping the registry | refused — an index is data from another repo |
+
+So "approved" means "listed in an index the pipeline produced and a human merged", not "present on
+disk". A registry pinned in the older single-file layout still loads, so nothing breaks before the
+first new pin PR lands.
 
 ## Upstreams live here, not in contracts
 
@@ -95,11 +122,12 @@ process environment, and rotation. Nothing above that seam moves.
   errors, plus whether retrying may help. An undocumented status says so.
 - **sandbox** — subprocess, hard timeout, environment scrubbed to only the upstream token this tool's
   own contract implies. **Not a security boundary** (see gaps below).
-- **two caches** — both keyed by `name@version` **plus a digest of the contract**, because nothing
-  forces a contributor to bump `contractVersion` when they correct a contract, and serving a fixed
-  contract with its predecessor's code shows up only as a wrong answer. Results additionally key on
-  the args `caching.keyBy` names, and are written *only* when the tool is read-only and cacheable. A
-  destructive tool is never cached, and that rule lives in one function.
+- **two caches** — keyed on a digest of *everything the code was generated from*, the engine's own
+  upstream resolution included, because nothing forces a contributor to bump `contractVersion` when
+  they correct a contract and nothing bumps it when `DEV_OFFLINE` changes the host. Results also key
+  on the principal and the args `caching.keyBy` names, and are written *only* for a read-only tool
+  that opted in. A write is never cached — decided from the HTTP verb, not from what the contract
+  claims about itself.
 - **stage events** — each pipeline stage is emitted as an MCP log notification, which is how the
   agent's UI renders a live trace. On a cache hit `code_generated` and `executing` are not emitted
   at all, because they did not happen.
@@ -116,7 +144,7 @@ contracts gate's job, and duplicating the rulebook would give us two versions of
 What it checks instead is the question the other repo cannot answer: **can this engine run it?**
 
 ```bash
-uv run python scripts/check_registry.py registry.generated.json
+uv run python scripts/check_registry.py registry/registry.json
 uv run python scripts/check_registry.py --contracts-dir ../cm_mcp_contracts/contracts
 ```
 

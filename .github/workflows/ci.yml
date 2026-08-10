@@ -21,6 +21,13 @@ jobs:
 
       - name: The pinned registry is still executable
         # Guards against a code change that breaks a contract already in
-        # production, which the contracts repo cannot detect.
+        # production, which the contracts repo cannot detect. Also re-checks every
+        # contract against the sha256 its index recorded, so an edit to a pinned
+        # contract that skipped the pipeline fails here.
+        if: hashFiles('registry/registry.json') != ''
+        run: uv run python scripts/check_registry.py registry/registry.json
+
+      - name: The legacy pinned registry is still executable
+        # Only present until the first pin PR in the index layout lands.
         if: hashFiles('registry.generated.json') != ''
         run: uv run python scripts/check_registry.py registry.generated.json

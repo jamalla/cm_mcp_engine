@@ -64,33 +64,46 @@ jobs:
         run: |
           gh release download "${{ steps.pick.outputs.tag }}" \
             --repo "$CONTRACTS_REPO" \
-            --pattern 'registry.generated.json' \
-            --output candidate-registry.json --clobber
+            --pattern 'registry.tar.gz' \
+            --output registry.tar.gz --clobber
+
+          # Extracted to a scratch directory, not over the pinned one: the repo's
+          # working tree stays untouched until every check below has passed.
+          rm -rf candidate && mkdir candidate
+          tar -xzf registry.tar.gz -C candidate
+          echo "Published registry contains:"
+          jq -r '.contracts[] | "  " + .name + " v" + .version' candidate/registry.json
 
       - name: Verify this engine can execute every contract
-        # The gate. A registry with a tool we cannot run never gets pinned.
-        run: uv run python scripts/check_registry.py candidate-registry.json
+        # The gate. A registry with a tool we cannot run never gets pinned. This
+        # also verifies every contract against the sha256 its index recorded.
+        run: uv run python scripts/check_registry.py candidate/registry.json
 
       - name: Run the engine's own tests against the candidate
         # Codegen passing is necessary, not sufficient -- this proves the tools
         # actually load and serve over MCP.
         env:
-          CM_REGISTRY_FILE: candidate-registry.json
+          CM_REGISTRY_FILE: candidate/registry.json
         run: uv run --extra dev pytest -q tests/test_mcp_surface.py
+
+      - name: Pin the new registry
+        # Replaced wholesale rather than merged, so a contract deleted upstream
+        # disappears here too. The legacy single-file artifact goes with it.
+        run: |
+          rm -rf registry registry.generated.json
+          mv candidate registry
+          rm -f registry.tar.gz
 
       - name: Has anything actually changed?
         id: diff
         run: |
-          if [ -f registry.generated.json ] && diff -q registry.generated.json candidate-registry.json >/dev/null; then
+          if [ -z "$(git status --porcelain -- registry registry.generated.json)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Pinned registry is already up to date."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            git status --short -- registry registry.generated.json
           fi
-
-      - name: Pin the new registry
-        if: steps.diff.outputs.changed == 'true'
-        run: mv candidate-registry.json registry.generated.json
 
       - name: Open a PR
         if: steps.diff.outputs.changed == 'true'
@@ -113,9 +126,14 @@ jobs:
 
             Verified before opening:
 
+            - every contract matches the sha256 its index recorded
             - every contract generates code this engine can run
             - every `builtin://` handler it names exists here
             - the MCP surface loads and serves the registry
+
+            One file per contract under `registry/contracts/`, listed in
+            `registry/registry.json`. The engine serves what the index lists and
+            nothing else, so the diff below is the whole change.
 
             Merging changes which tools this engine serves.
           labels: registry, automated

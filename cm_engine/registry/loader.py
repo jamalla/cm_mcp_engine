@@ -17,6 +17,7 @@ catches before a bad registry is ever pinned.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -291,6 +292,74 @@ def entries_from_contract(contract: dict[str, Any]) -> list[ToolEntry]:
     ]
 
 
+def _from_index(index_path: Path, entries: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
+    """Read the contracts an index points at, verifying each against its hash.
+
+    The index is what makes a directory a registry. A contract file sitting next
+    to it that no entry lists was not published and is not served; one whose bytes
+    no longer match its recorded sha256 was changed after publication. Either way
+    the engine refuses it and says so, rather than serving whatever happens to be
+    on disk -- which is the difference between "approved" and "present".
+    """
+    root = index_path.parent
+    documents: list[tuple[str, dict[str, Any]]] = []
+    listed: set[Path] = set()
+
+    for entry in entries:
+        name = entry.get("name") or "?"
+        relative = entry.get("path")
+        if not relative:
+            documents.append((name, {"__error__": "the index entry has no path"}))
+            continue
+
+        path = (root / relative).resolve()
+        listed.add(path)
+
+        # An index is data from another repository; a path in it must not be able
+        # to reach outside the registry it came with.
+        if root.resolve() not in path.parents:
+            documents.append((name, {"__error__": f"path {relative!r} escapes the registry"}))
+            continue
+
+        if not path.is_file():
+            documents.append((name, {"__error__": f"the index lists {relative}, which is missing"}))
+            continue
+
+        body = path.read_bytes()
+        expected = entry.get("sha256")
+        actual = hashlib.sha256(body).hexdigest()
+        if expected and actual != expected:
+            documents.append(
+                (
+                    name,
+                    {
+                        "__error__": (
+                            f"{relative} does not match the sha256 the registry recorded "
+                            f"({actual[:12]} vs {expected[:12]}); it was changed after publication"
+                        )
+                    },
+                )
+            )
+            continue
+
+        try:
+            documents.append((name, json.loads(body.decode("utf-8"))))
+        except json.JSONDecodeError as exc:
+            documents.append((name, {"__error__": f"{relative} is not valid JSON -- {exc}"}))
+
+    # Anything in the registry's own contracts directory that no entry claims.
+    for stray in sorted((root / "contracts").glob("*.json")):
+        if stray.resolve() not in listed:
+            documents.append(
+                (
+                    stray.name,
+                    {"__error__": "not listed in the registry index, so it was never published"},
+                )
+            )
+
+    return documents
+
+
 def _documents(source: ContractSource) -> list[tuple[str, dict[str, Any]]]:
     """Read raw contract documents from whichever source is configured."""
     if source.kind == "registry-file":
@@ -301,8 +370,17 @@ def _documents(source: ContractSource) -> list[tuple[str, dict[str, Any]]]:
                 "the consume-registry workflow to pin one."
             )
         payload = json.loads(source.path.read_text(encoding="utf-8"))
+        entries = payload.get("contracts", [])
+
+        # Two layouts. The current one is an index of paths and hashes, one file
+        # per contract, which keeps a registry reviewable at hundreds of tools.
+        # The legacy one inlined every contract in this file; still read so a
+        # registry pinned before the split keeps serving.
+        if entries and isinstance(entries[0], dict) and "path" in entries[0]:
+            return _from_index(source.path, entries)
+
         return [
-            (c.get("interface", {}).get("name") or "?", c) for c in payload.get("contracts", [])
+            (c.get("interface", {}).get("name") or "?", c) for c in entries
         ]
 
     if not source.path.is_dir():
