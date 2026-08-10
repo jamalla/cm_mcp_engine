@@ -37,15 +37,18 @@ def is_cacheable(entry) -> bool:
 
 
 def cache_key(entry, args: dict[str, Any]) -> str:
-    """`name@version` plus the args that `caching.keyBy` says matter.
+    """The tool's cache identity plus the args that `caching.keyBy` says matter.
 
     keyBy lets a contract declare that only some arguments affect the result --
     a page size or a trace id should not fragment the cache.
+
+    The identity is `entry.cache_id`, which folds in a digest of the contract, so
+    a corrected contract cannot be answered from results its predecessor cached.
     """
     key_by = entry.caching.get("keyBy")
     relevant = {k: args[k] for k in key_by if k in args} if key_by else dict(args)
     canonical = json.dumps(relevant, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(f"{entry.key}|{canonical}".encode()).hexdigest()[:16]
+    digest = hashlib.sha256(f"{entry.cache_id}|{canonical}".encode()).hexdigest()[:16]
     return f"{entry.key}:{digest}"
 
 

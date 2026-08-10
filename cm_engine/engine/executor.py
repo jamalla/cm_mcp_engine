@@ -137,11 +137,11 @@ class Executor:
 
         # --- code cache + codegen ---------------------------------------
         try:
-            source = self.code_cache.get(entry.key)
+            source = self.code_cache.get(entry.cache_id)
             from_cache = source is not None
             if source is None:
                 source = codemode.generate(entry)
-            module_path = self.code_cache.put(entry.key, source)
+            module_path = self.code_cache.put(entry.cache_id, source)
         except Exception as exc:  # noqa: BLE001 - surfaced as an error event
             message = f"code generation failed: {exc}"
             await emitter.emit(ev.ERROR, stage=ev.CODE_GENERATED, message=message)
@@ -152,7 +152,7 @@ class Executor:
             code=source,
             fromCache=from_cache,
             language="python",
-            cacheKey=entry.key,
+            cacheKey=entry.cache_id,
         )
 
         # --- execute -----------------------------------------------------

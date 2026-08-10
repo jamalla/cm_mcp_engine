@@ -65,9 +65,11 @@ Credentials go in `.env`; see `.env.example`.
   errors, plus whether retrying may help. An undocumented status says so.
 - **sandbox** — subprocess, hard timeout, environment scrubbed to only the upstream token this tool's
   own contract implies. **Not a security boundary** (see gaps below).
-- **two caches** — code keyed by `name@version`, so a version bump retires stale code for free;
-  results keyed by `name@version` + the args `caching.keyBy` names, written *only* when the tool is
-  read-only and cacheable. A destructive tool is never cached, and that rule lives in one function.
+- **two caches** — both keyed by `name@version` **plus a digest of the contract**, because nothing
+  forces a contributor to bump `contractVersion` when they correct a contract, and serving a fixed
+  contract with its predecessor's code shows up only as a wrong answer. Results additionally key on
+  the args `caching.keyBy` names, and are written *only* when the tool is read-only and cacheable. A
+  destructive tool is never cached, and that rule lives in one function.
 - **stage events** — each pipeline stage is emitted as an MCP log notification, which is how the
   agent's UI renders a live trace. On a cache hit `code_generated` and `executing` are not emitted
   at all, because they did not happen.

@@ -1,7 +1,9 @@
 """Code cache: generate a tool's source once, reuse it forever.
 
-Key is `contractName@contractVersion`, so bumping contractVersion retires the
-stale code automatically -- no invalidation logic to get wrong.
+Key is `contractName@contractVersion+<digest of the contract>`, so a version bump
+*or* an edit to the contract retires the stale code automatically -- no
+invalidation logic to get wrong, and no way for a corrected contract to be served
+with the code its predecessor generated.
 """
 
 from __future__ import annotations
@@ -17,7 +19,9 @@ class CodeCache:
         self._memory: dict[str, str] = {}
 
     def _path(self, key: str) -> Path:
-        return self._dir / f"{key.replace('@', '__')}.py"
+        # @ and + are legal in a filename on Linux and awkward on Windows, so the
+        # key is flattened rather than trusted as a path component.
+        return self._dir / f"{key.replace('@', '__').replace('+', '__')}.py"
 
     def get(self, key: str) -> str | None:
         if key in self._memory:

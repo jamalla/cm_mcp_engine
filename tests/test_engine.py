@@ -254,6 +254,29 @@ def test_code_cache_invalidates_on_version_bump(tmp_path):
     assert cache.get("tool@1.1.0") is None, "a version bump must retire stale code"
 
 
+def test_an_edited_contract_does_not_reuse_the_old_generated_code(catalog):
+    """Nothing forces a contributor to bump contractVersion when fixing a contract.
+
+    Without a content digest in the cache identity, a corrected contract would be
+    served with the code generated from the one it replaced -- and the only symptom
+    would be a wrong answer. Found by running the pipeline against a real contract
+    with one field changed and getting the previous contract's behavior.
+    """
+    from cm_engine.registry.loader import entries_from_contract
+
+    original = catalog.get("list_categories")
+    edited_doc = _contract("list_categories")
+    edited_doc["interface"]["input"]["schema"]["required"] = []
+    (edited,) = entries_from_contract(edited_doc)
+
+    assert edited.key == original.key, "same name, same version -- that is the trap"
+    assert edited.cache_id != original.cache_id
+    assert codemode.generate(edited) != codemode.generate(original)
+
+    # And a cached result cannot cross the edit either.
+    assert cache_key(edited, {"page": 1}) != cache_key(original, {"page": 1})
+
+
 # -- executor ---------------------------------------------------------------
 
 
