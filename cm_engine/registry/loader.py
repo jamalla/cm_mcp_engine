@@ -28,6 +28,10 @@ from cm_engine.config import ContractSource, UPSTREAMS, resolve_contract_source,
 SUPPORTED_BINDINGS = {"http", "none"}
 SUPPORTED_KINDS = {"single-tool"}
 
+# Verbs that change store data. Used to decide behavior from the request itself
+# rather than from what a contract says about itself.
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
 _PATH_PLACEHOLDER = re.compile(r"\{([^}]+)\}")
 
 
@@ -59,12 +63,29 @@ class ToolEntry:
         return self.interface.get("annotations", {})
 
     @property
+    def method(self) -> str | None:
+        """The HTTP verb, or None for a builtin."""
+        return self.http.get("method")
+
+    @property
     def read_only(self) -> bool:
+        """Whether this engine will treat the tool as a read.
+
+        The verb decides and the annotation can only agree with it. The contracts
+        gate already rejects a POST claiming `readOnlyHint: true` -- but the gate
+        is a different machine from the one that acts on the claim, and this engine
+        also loads sources that never passed it: a developer's working tree, a
+        hand-edited pinned artifact. Caching a write is a correctness bug whatever
+        a contract says about itself, so the answer is derived, not believed.
+        """
+        if self.method in WRITE_METHODS:
+            return False
         return bool(self.annotations.get("readOnlyHint"))
 
     @property
     def destructive(self) -> bool:
-        return bool(self.annotations.get("destructiveHint"))
+        """As above: a DELETE is destructive whatever it claims about itself."""
+        return self.method == "DELETE" or bool(self.annotations.get("destructiveHint"))
 
     @property
     def http(self) -> dict[str, Any]:
@@ -77,6 +98,15 @@ class ToolEntry:
 
     @property
     def needs_approval(self) -> bool:
+        """Whether a human sees this before it runs.
+
+        DELETE always does. It removes data irreversibly, so a contract does not
+        get to opt out of the proposal step -- not through its governance block,
+        and not by arriving from a source with no gate in front of it.
+        """
+        if self.method == "DELETE":
+            return True
+
         execution = self.governance.get("execution", {})
         return (
             execution.get("mode") == "propose-apply"
