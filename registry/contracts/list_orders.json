@@ -1,0 +1,259 @@
+{
+  "$schema": "../schema/tool-contract.v1.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "list_orders",
+    "title": "List Store Orders",
+    "description": "Returns a paginated list of the store's orders with each order's reference number, date, status, total and customer, optionally narrowed by status, by a date range, or by a keyword.",
+    "whenToUse": [
+      "The merchant wants to see recent orders, e.g. 'show me my latest orders' or 'what came in today?'.",
+      "The merchant asks how many orders are sitting in a particular state, e.g. 'what's still awaiting review?' -- filter with the status argument.",
+      "The merchant asks about a period, e.g. 'orders from last week' or 'what did I get in March?' -- filter with fromDate and toDate.",
+      "The merchant is looking for one customer's orders by name or mobile number, or for an order by its shipping number or reference id -- filter with the keyword argument.",
+      "An agent needs order ids or reference numbers before reporting on or acting on specific orders."
+    ],
+    "whenNotToUse": [
+      "The merchant named ONE specific order and wants its full details, line items or shipping -- use get_order with the order id instead.",
+      "The merchant wants to know which order states the store has, rather than the orders themselves -- use list_order_statuses instead.",
+      "The merchant wants to move an order to a different state -- this tool only reads; use update_order_status instead.",
+      "The merchant is asking about the catalogue rather than what has been bought -- use list_products instead."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Pagination page number. The response returns one page of orders; increment to fetch the rest."
+          },
+          "status": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Return only orders in these states, given as status slugs such as 'under_review', 'in_progress' or 'completed'. The slugs a store actually uses come from list_order_statuses; a store can rename its states, so prefer a slug the merchant's own statuses report over a guess."
+          },
+          "fromDate": {
+            "type": "string",
+            "description": "Earliest order date to include, as YYYY-MM-DD."
+          },
+          "toDate": {
+            "type": "string",
+            "description": "Latest order date to include, as YYYY-MM-DD."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Find orders by customer name or mobile number, shipping number, reference id, or tag name."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The order id, used by sibling order tools."
+          },
+          "reference_id": {
+            "type": "integer",
+            "description": "The order number the merchant and the customer see; quote this one back to a merchant, not the id."
+          },
+          "date": {
+            "type": "object",
+            "description": "When the order was placed.",
+            "properties": {
+              "date": {
+                "type": "string",
+                "description": "Timestamp, e.g. '2022-06-16 14:48:20.000000'."
+              },
+              "timezone": {
+                "type": "string",
+                "description": "The store's timezone the timestamp is expressed in, e.g. 'Asia/Riyadh'."
+              }
+            }
+          },
+          "status": {
+            "type": "object",
+            "description": "The state the order is currently in.",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "The status id."
+              },
+              "name": {
+                "type": "string",
+                "description": "The status as the merchant sees it, in the store's own language -- often Arabic."
+              },
+              "slug": {
+                "type": "string",
+                "description": "The stable machine-readable state, e.g. 'under_review'. Match on this rather than on name."
+              }
+            }
+          },
+          "total": {
+            "type": "object",
+            "description": "What the order came to.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The order total."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code, e.g. 'SAR'."
+              }
+            }
+          },
+          "payment_method": {
+            "type": "string",
+            "description": "How the order was paid, e.g. 'bank' or 'credit_card'."
+          },
+          "customer": {
+            "type": "object",
+            "description": "Who placed the order.",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "The customer id."
+              },
+              "first_name": {
+                "type": "string",
+                "description": "The customer's first name."
+              },
+              "last_name": {
+                "type": "string",
+                "description": "The customer's last name."
+              },
+              "mobile": {
+                "type": "integer",
+                "description": "The customer's mobile number, without the country code held in mobile_code."
+              },
+              "city": {
+                "type": "string",
+                "description": "The customer's city, in the store's own language."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "reference_id"
+        ]
+      },
+      "ui": {
+        "display": "table",
+        "title": "Store Orders"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "List Orders -- list all orders related to your store, filterable by status, date range, and a keyword matching customer name or mobile, shipping number, reference id or tag.",
+      "docsUrl": "https://docs.salla.dev/5394146e0",
+      "method": "GET",
+      "path": "/orders",
+      "auth": {
+        "scopes": [
+          "orders.read"
+        ]
+      },
+      "parameters": {
+        "query": [
+          {
+            "name": "page",
+            "description": "The pagination page number."
+          },
+          {
+            "name": "status",
+            "style": "bracket",
+            "description": "Order status slugs to filter by. Salla takes this as an array, serialized Laravel-style as status[]=a&status[]=b."
+          },
+          {
+            "name": "from_date",
+            "from": "fromDate",
+            "description": "Earliest order date to include."
+          },
+          {
+            "name": "to_date",
+            "from": "toDate",
+            "description": "Latest order date to include."
+          },
+          {
+            "name": "keyword",
+            "description": "A keyword matched against customer name and mobile, shipping number, reference id and tag name."
+          }
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": true,
+        "pagination": "standard",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the orders.read scope, so the store's orders cannot be read until the app's authorization is fixed."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "validation": {
+    "rules": [
+      {
+        "field": "fromDate",
+        "match": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "message": "fromDate must be a date in YYYY-MM-DD form"
+      },
+      {
+        "field": "toDate",
+        "match": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "message": "toDate must be a date in YYYY-MM-DD form"
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "contract": "list_order_statuses",
+      "reason": "the status filter takes status slugs, and a store can rename its states -- list_order_statuses is where the real ones come from"
+    }
+  ],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "keyBy": [
+        "page",
+        "status",
+        "fromDate",
+        "toDate",
+        "keyword"
+      ],
+      "ttlSeconds": 60
+    }
+  }
+}
