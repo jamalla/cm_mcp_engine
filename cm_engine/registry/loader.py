@@ -28,6 +28,38 @@ from cm_engine.config import UPSTREAMS, ContractSource, resolve_contract_source,
 SUPPORTED_BINDINGS = {"http", "none"}
 SUPPORTED_KINDS = {"single-tool"}
 
+# The rulebooks this engine can execute faithfully. Not a courtesy check.
+#
+# v2 added `resolve` on a query parameter: a value the tool takes in readable
+# form that the upstream wants as a store-specific id. An engine that does not
+# implement it does not fail -- it ignores the block and sends the readable
+# value, and Salla answers an unusable filter by returning everything unfiltered.
+# The wrong answer arrives looking exactly like the right one.
+#
+# So the version is refused rather than partially honoured. A skipped contract is
+# visible; a silently unfiltered one is not.
+SUPPORTED_SCHEMA_IDS = {
+    "https://contract-mcp.example/schemas/tool-contract.v2.json",
+}
+
+
+class UnsupportedRegistry(RuntimeError):
+    """A registry written against a rulebook this engine does not implement."""
+
+
+def unsupported_schema(schema_id: Any) -> str | None:
+    """Why this registry cannot be served, or None if it can.
+
+    A missing id is allowed: registries built before the index carried one, and
+    the layouts that predate it cannot contain anything this engine would
+    mishandle.
+    """
+    if not schema_id:
+        return None
+    if schema_id in SUPPORTED_SCHEMA_IDS:
+        return None
+    return f"this registry declares schemaId {schema_id!r}, which this engine does not implement"
+
 # Verbs that change store data. Used to decide behavior from the request itself
 # rather than from what a contract says about itself.
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -383,6 +415,14 @@ def _documents(source: ContractSource) -> list[tuple[str, dict[str, Any]]]:
                 "point CM_REGISTRY_FILE at its registry.json."
             )
         payload = json.loads(source.path.read_text(encoding="utf-8"))
+
+        if problem := unsupported_schema(payload.get("schemaId")):
+            raise UnsupportedRegistry(
+                f"{problem} (registry: {source.path}, source: {source.origin}). "
+                f"This engine implements {', '.join(sorted(SUPPORTED_SCHEMA_IDS))}. "
+                f"Upgrade the engine, or pin a registry built against a rulebook it knows."
+            )
+
         entries = payload.get("contracts", [])
 
         # Two layouts. The current one is an index of paths and hashes, one file
