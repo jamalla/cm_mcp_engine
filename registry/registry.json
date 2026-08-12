@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-12T06:26:21+00:00",
+  "generatedAt": "2026-08-12T07:19:41+00:00",
   "sourceRepo": "cm_mcp_contracts",
-  "sourceCommit": "0ce6bc7c15087951ed2fe129512bb029154bc34c",
-  "schemaId": "https://contract-mcp.example/schemas/tool-contract.v1.json",
+  "sourceCommit": "146af242861480cd9ca74c285a70488ea307b421",
+  "schemaId": "https://contract-mcp.example/schemas/tool-contract.v2.json",
   "layout": "index",
-  "contentHash": "de58b9fba24910daeaa4621ab7a8906930be739677a6574e980f14f80cee55e5",
+  "contentHash": "070b8119386fe95660b109879f2b01c7dda077d4ee6d873cdc3c6292f93a633a",
   "toolCount": 4,
   "toolNames": [
     "list_categories",
@@ -17,25 +17,25 @@
       "name": "list_categories",
       "version": "1.0.0",
       "path": "contracts/list_categories.json",
-      "sha256": "02d49cf89e62a98936e11cbea9973ebacb520790daed278881904ef9add8d84c"
+      "sha256": "d5316aac11126f8740ade93ec7ebe752f0878a854efea2beacc65ed7c5239aad"
     },
     {
       "name": "list_order_statuses",
       "version": "1.0.0",
       "path": "contracts/list_order_statuses.json",
-      "sha256": "7fee76466f9d5c0571932a1df7a7a6f1382de665f23677977564fc30d9a60df4"
+      "sha256": "b888a6dba4ba08fc0b8ca2d3b053d06dbdf0f15dbf9ea1c4fd66416603eab099"
     },
     {
       "name": "list_orders",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "path": "contracts/list_orders.json",
-      "sha256": "2b765ef2c71c43f80be73f05344b59557a91a74446f3dbdb0b93a239e8021494"
+      "sha256": "3c29fd79c018c5f69b13ae01a39485d12103a5bf7b78f980d91dbf895d7e152d"
     },
     {
       "name": "list_products",
       "version": "1.0.1",
       "path": "contracts/list_products.json",
-      "sha256": "19cf5b9407b14435ff4fa459fa3bc12db5e8cb72e7d9a5bed0f3386ed758bd05"
+      "sha256": "03ebcf550f2e1c11842b037ead364e4c4fbdcc81bde30a1734476df2f18e58c4"
     }
   ]
 }
