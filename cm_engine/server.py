@@ -138,6 +138,11 @@ def _build_tool(entry: ToolEntry) -> FunctionTool:
             # Input constraints are part of the public surface -- a client needs
             # them to build a valid call. The binding they guard stays private.
             "validationRules": entry.rules,
+            # The lookups this tool depends on. Published so an agent can act on
+            # the edge rather than read about it: a filter that takes ids only a
+            # sibling tool can supply is unusable by a client that cannot see
+            # which sibling. The engine states the edge; it does not walk it.
+            "dependencies": entry.dependencies,
             "governance": entry.governance,
             "responseUi": entry.interface.get("response", {}).get("ui"),
             # The scopes the merchant's credential must carry. Useful to a client
