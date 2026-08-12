@@ -1,5 +1,11 @@
 """Offline stand-in for a configured upstream, speaking the Salla Admin API's shape.
 
+TEST FIXTURE. It lives under tests/ rather than in cm_engine/ so that it is not
+part of the distributed package: a deployed engine cannot import it, cannot start
+it, and therefore cannot answer a merchant with simulated data even if DEV_OFFLINE
+were set by accident. The suite boots it in-process (see tests/conftest.py); there
+is no entry point that starts it standalone.
+
 The engine's upstream table points `salla` here whenever DEV_OFFLINE is set, so
 the generated code is byte-identical online and off -- same envelope, same
 pagination object, same error shape. Only the host differs.
@@ -20,11 +26,8 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
-import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
-from cm_engine.config import MOCK_API_PORT
 
 app = FastAPI(title="Mock Salla Admin API")
 
@@ -175,11 +178,3 @@ async def delete_category(category_id: int) -> JSONResponse:
 
     _deleted.add(category_id)
     return _envelope({"id": category_id, "deleted": True})
-
-
-def main() -> None:
-    uvicorn.run(app, host="127.0.0.1", port=MOCK_API_PORT, log_level="warning")
-
-
-if __name__ == "__main__":
-    main()

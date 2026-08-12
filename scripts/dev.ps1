@@ -1,7 +1,12 @@
-# Starts this service: the mock upstream API and the FastMCP server.
+# Starts this service: the FastMCP server, calling the real upstream.
 #
 # That is all this repo owns. The UI lives in cm_mcp_agent and starts itself --
 # nothing here knows or cares whether it is running.
+#
+# No simulator is started here. The offline mock is a test fixture under tests/,
+# booted in-process by the suite and by nothing else, so a running engine always
+# answers from the upstream its contracts name. Set DEV_OFFLINE=0 and a real
+# SALLA_ACCESS_TOKEN in .env, exactly as the deployed service does.
 #
 #   pwsh scripts/dev.ps1          # start
 #   pwsh scripts/dev.ps1 -Stop    # stop
@@ -11,7 +16,7 @@ param([switch]$Stop)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $pidFile = Join-Path $repo '.cache/dev-pids.json'
-$ports = @(8787, 8765)
+$ports = @(8765)
 
 function Stop-Stack {
     if (Test-Path $pidFile) {
@@ -79,15 +84,12 @@ try {
         throw "$name did not become healthy at $probe."
     }
 
-    Start-Probed 'mock upstream API :8787' 'uv' @('run', 'python', '-m', 'cm_engine.mock_upstream') `
-        'http://127.0.0.1:8787/healthz'
     Start-Probed 'FastMCP server :8765' 'uv' @('run', 'python', '-m', 'cm_engine.server') `
         'http://127.0.0.1:8765/mcp' $true
 
     Write-Host ''
     Write-Host 'Engine is up.' -ForegroundColor Green
     Write-Host '  MCP   http://127.0.0.1:8765/mcp'
-    Write-Host '  mock  http://127.0.0.1:8787/healthz'
     Write-Host ''
     Write-Host 'Stop with: pwsh scripts/dev.ps1 -Stop' -ForegroundColor DarkGray
 }

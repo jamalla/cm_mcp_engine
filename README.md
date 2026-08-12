@@ -9,7 +9,7 @@ and UI live in [`cm_mcp_agent`](../cm_mcp_agent) and reach this service over MCP
 ```bash
 uv sync --extra dev
 uv run pytest                 # 90 tests, no network, no ports
-pwsh scripts/dev.ps1          # mock upstream :8787 + FastMCP :8765
+pwsh scripts/dev.ps1          # FastMCP :8765, calling the real upstream
 pwsh scripts/dev.ps1 -Stop
 ```
 
@@ -93,9 +93,11 @@ This is the trust boundary. A contributor writes a contract; they do not get to 
 merchant's OAuth token travels, and they cannot pin a host that later drifts. Adding an upstream is a
 change to that table, reviewed here, by the people who hold the credentials.
 
-With `DEV_OFFLINE=1` (the default) every upstream resolves to `cm_engine/mock_upstream.py` instead —
-same envelope, same pagination, same error shape, so the generated code is identical either way.
-Credentials go in `.env`; see `.env.example`.
+`DEV_OFFLINE=1` exists for the test suite alone: it resolves every upstream to `tests/mock_upstream.py`
+— same envelope, same pagination, same error shape, so the generated code is identical either way. The
+mock is a test fixture, not part of the distributed package, so a running engine cannot serve simulated
+data; `scripts/dev.ps1` and the deployed image both call the real upstream. Credentials go in `.env`;
+see `.env.example`.
 
 ## How a credential reaches a call — and how it doesn't
 

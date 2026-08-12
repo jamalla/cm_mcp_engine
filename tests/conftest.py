@@ -66,7 +66,7 @@ def mock_upstream():
     import uvicorn
 
     from cm_engine.config import MOCK_API_PORT
-    from cm_engine.mock_upstream import app
+    from tests.mock_upstream import app
 
     base = f"http://127.0.0.1:{MOCK_API_PORT}"
 

@@ -34,6 +34,12 @@ from cm_engine.config import Upstream, resolve_token
 # explicitly rather than left implicit.
 DEFAULT_PRINCIPAL_ID = os.environ.get("CM_PRINCIPAL", "local-dev")
 
+# What the UI and the stage events call this principal. Derived from the id rather
+# than fixed, because a hardcoded label describes one deployment and then lies in
+# every other -- a service running as CM_PRINCIPAL=render-demo announced itself as
+# the "local development store" on every call it made.
+_PRINCIPAL_LABELS = {"local-dev": "local development store"}
+
 
 @dataclass(frozen=True)
 class Principal:
@@ -52,7 +58,8 @@ class Principal:
 
 
 def default_principal() -> Principal:
-    return Principal(id=DEFAULT_PRINCIPAL_ID, label="local development store")
+    label = _PRINCIPAL_LABELS.get(DEFAULT_PRINCIPAL_ID, DEFAULT_PRINCIPAL_ID)
+    return Principal(id=DEFAULT_PRINCIPAL_ID, label=label)
 
 
 class CredentialProvider:
