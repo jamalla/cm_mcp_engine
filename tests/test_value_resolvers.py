@@ -115,7 +115,7 @@ def generated():
     source = codemode.generate(_entry(copy.deepcopy(CONTRACT)))
     module = types.ModuleType("generated_list_orders")
     exec(compile(source, "generated_list_orders.py", "exec"), module.__dict__)  # noqa: S102
-    module.fetch_records = lambda resolver: RECORDS
+    module.fetch_records = lambda _resolver: RECORDS
     return module
 
 
