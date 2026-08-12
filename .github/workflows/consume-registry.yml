@@ -121,6 +121,16 @@ jobs:
         if: steps.diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
+          # Who opens the PR decides whether its checks run unattended. Events
+          # created with the default GITHUB_TOKEN cannot trigger further workflow
+          # runs -- GitHub's recursion guard -- so the pin PR's `ci` run parks as
+          # action_required and a human has to press "Approve and run" before the
+          # check that proves this engine can execute the registry will even start.
+          # REGISTRY_PIN_TOKEN is a real identity, so the run starts by itself.
+          #
+          # Falls back to GITHUB_TOKEN when the secret is absent: the pin PR still
+          # opens, exactly as before, and only the approval click comes back.
+          token: ${{ secrets.REGISTRY_PIN_TOKEN || secrets.GITHUB_TOKEN }}
           branch: registry/${{ steps.pick.outputs.tag }}
           # A PR rather than a direct push: pinning a new registry changes which
           # tools this service serves in production, which deserves a human
