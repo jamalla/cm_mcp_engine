@@ -122,6 +122,18 @@ class ToolEntry:
         return self.interface.get("input", {}).get("schema", {})
 
     @property
+    def dependencies(self) -> list[dict[str, str]]:
+        """Tools that have to be called before this one can be called correctly.
+
+        Served to clients rather than kept here. A contract declares that its
+        status filter takes ids that only `list_order_statuses` can supply; if
+        that edge never leaves the engine, the client cannot act on it and the
+        declaration is a comment. The engine still does not ORDER the calls --
+        it publishes the edge and lets the agent decide.
+        """
+        return list(self.raw.get("dependencies") or [])
+
+    @property
     def rules(self) -> list[dict[str, str]]:
         return self.validation.get("rules", [])
 
@@ -142,6 +154,7 @@ class ToolEntry:
             "whenNotToUse": self.interface.get("whenNotToUse", []),
             "inputSchema": self.input_schema,
             "annotations": self.annotations,
+            "dependencies": self.dependencies,
         }
 
     def raw_contract(self) -> dict[str, Any]:
