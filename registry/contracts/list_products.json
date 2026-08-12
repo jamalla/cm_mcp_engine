@@ -1,5 +1,5 @@
 {
-  "$schema": "../schema/tool-contract.v1.json",
+  "$schema": "../schema/tool-contract.v2.json",
   "contractVersion": "1.0.1",
   "kind": "single-tool",
   "interface": {

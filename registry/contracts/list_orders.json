@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v1.json",
-  "contractVersion": "2.0.0",
+  "$schema": "../schema/tool-contract.v2.json",
+  "contractVersion": "3.0.0",
   "kind": "single-tool",
   "interface": {
     "name": "list_orders",
@@ -8,7 +8,7 @@
     "description": "Returns a paginated list of the store's orders with each order's reference number, date, status, total and customer, optionally narrowed by status, by a date range, or by a keyword.",
     "whenToUse": [
       "The merchant wants to see recent orders, e.g. 'show me my latest orders' or 'what came in today?'.",
-      "The merchant asks about orders in a particular state, e.g. 'what's still awaiting review?' or 'list recent shipped orders' -- call list_order_statuses first to turn the merchant's wording into this store's status id, then filter with the status argument.",
+      "The merchant asks about orders in a particular state, e.g. 'what's still awaiting review?' or 'list recent shipped orders' -- put the merchant's own wording straight into the status argument; matching it against the states the store really has happens inside the call.",
       "The merchant asks about a period, e.g. 'orders from last week' or 'what did I get in March?' -- filter with fromDate and toDate.",
       "The merchant is looking for one customer's orders by name or mobile number, or for an order by its shipping number or reference id -- filter with the keyword argument.",
       "An agent needs order ids or reference numbers before reporting on or acting on specific orders."
@@ -38,9 +38,9 @@
           "status": {
             "type": "array",
             "items": {
-              "type": "integer"
+              "type": "string"
             },
-            "description": "Return only orders in these states, given as this store's own status ids -- the `id` field of a row from list_order_statuses. NOT slugs, NOT status names, and NOT the canonical id under `original`: the upstream silently returns zero orders for the wrong kind of id, which reads as an empty store rather than as an error. The ids are per-store, so they must be looked up and cannot be recalled or guessed."
+            "description": "Return only orders in these states, named the way a person would: 'shipped', 'delivered', 'under_review', 'canceled', or the store's own label for a state. These are matched against the store's actual states when the call runs, so a name this store does not have fails and says which ones it does have -- it never comes back as an unfiltered list of every order. Note Salla has no state literally called 'returned' or 'refunded'; that is 'restored'."
           },
           "fromDate": {
             "type": "string",
@@ -91,19 +91,19 @@
             "properties": {
               "id": {
                 "type": "integer",
-                "description": "The CANONICAL Salla status id, the same across every store. Note this is not the id the status filter above takes -- that one is under `customized`."
+                "description": "The CANONICAL Salla status id, the same in every store."
               },
               "name": {
                 "type": "string",
-                "description": "The status as the merchant sees it, in the store's own language -- often Arabic."
+                "description": "The status as the merchant sees it, in the store's own language -- often Arabic. Quote this one back to a merchant."
               },
               "slug": {
                 "type": "string",
-                "description": "The canonical state family, e.g. 'under_review'. Readable, and safe to report to a merchant, but not unique across a store's custom states and not accepted by the status filter."
+                "description": "The canonical state family, e.g. 'under_review'. Readable and stable across stores, but not unique within one: a parent state and the custom states beneath it share a slug."
               },
               "customized": {
                 "type": "object",
-                "description": "This store's own version of the state -- {id, name}. Its id is the one the status argument takes and the one list_order_statuses returns as `id`.",
+                "description": "This store's own version of the state -- {id, name}. Its id is what the status filter is ultimately sent, though the tool takes readable names rather than this.",
                 "properties": {
                   "id": {
                     "type": "integer",
@@ -195,7 +195,19 @@
           {
             "name": "status",
             "style": "bracket",
-            "description": "The store's own order status ids to filter by. Salla takes this as an array, serialized Laravel-style as status[]=1&status[]=2."
+            "description": "Order states to filter by. Salla takes this as an array of the STORE'S OWN numeric status ids, serialized Laravel-style as status[]=1&status[]=2 -- so the readable names the tool accepts are turned into this store's ids by the resolver below before the request is built.",
+            "resolve": {
+              "contract": "list_order_statuses",
+              "path": "/orders/statuses",
+              "dataPath": "data",
+              "matchOn": [
+                "slug",
+                "name",
+                "translations.en.name"
+              ],
+              "sendField": "id",
+              "onMiss": "error"
+            }
           },
           {
             "name": "from_date",
@@ -250,7 +262,7 @@
   "dependencies": [
     {
       "contract": "list_order_statuses",
-      "reason": "the status filter takes this store's own status ids, which are per-store and cannot be guessed -- list_order_statuses is the only place they come from"
+      "reason": "the status filter is resolved through it: the readable state names this tool accepts are matched against the store's own states and sent as its ids"
     }
   ],
   "governance": {
