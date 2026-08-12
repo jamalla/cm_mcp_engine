@@ -1,0 +1,43 @@
+# Render blueprint for the engine.
+#
+# The deployment rule that makes the demo honest: autoDeploy on `main` only.
+# A contract becomes callable when, and only when, a human merges the pin PR that
+# consume-registry opened here. Nothing in this file can reach a contract that is
+# still on a branch, and the engine reads no checkout but its own.
+#
+#   contracts PR merged -> registry published -> pin PR opened HERE
+#                       -> a human merges it -> Render deploys -> the tool exists
+#
+# Connect this file once (Render -> New -> Blueprint) and set SALLA_ACCESS_TOKEN
+# in the dashboard. Everything else is declared.
+
+services:
+  - type: web
+    name: cm-mcp-engine
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    branch: main
+    autoDeploy: true
+
+    # No healthCheckPath on purpose. The only HTTP surface is /mcp, and FastMCP
+    # answers a bare GET there with an error by design -- a health check pointed
+    # at it would fail a service that is working perfectly. Render's port binding
+    # check is the honest signal here.
+
+    envVars:
+      # Real upstreams. Set to 1 and the engine answers from a local simulator
+      # instead of the merchant's store, which is not what a live demo means.
+      - key: DEV_OFFLINE
+        value: "0"
+
+      # The Salla Admin API credential. sync: false keeps it out of git: Render
+      # prompts for it once and stores it, and it reaches the tool's generated
+      # code only as a variable NAME resolved inside the sandbox at call time.
+      - key: SALLA_ACCESS_TOKEN
+        sync: false
+
+      # Scopes the credential lookup and the result cache, so cached answers are
+      # never served across principals.
+      - key: CM_PRINCIPAL
+        value: render-demo

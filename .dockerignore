@@ -1,0 +1,19 @@
+# Keep the build context to the source and the registry. Everything below is
+# either rebuilt in the image, machine-local, or a secret that must never be
+# baked into a layer.
+
+.venv/
+__pycache__/
+*.pyc
+.cache/
+.pytest_cache/
+.ruff_cache/
+.git/
+.github/
+tests/
+scripts/
+
+# Credentials reach a deployed engine as environment variables, set by the
+# platform. A .env copied into the image would put a live store token in a layer
+# that anyone who can pull the image can read.
+.env
