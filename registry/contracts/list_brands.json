@@ -1,0 +1,167 @@
+{
+  "$schema": "../schema/tool-contract.v2.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "list_brands",
+    "title": "List Store Brands",
+    "description": "Returns a paginated list of the brands registered in the store, each with its id, name, description and logo, optionally narrowed by a name keyword.",
+    "whenToUse": [
+      "The merchant wants an overview of the brands they carry, e.g. 'which brands do I sell?'.",
+      "The merchant asks whether a particular brand exists in their store, e.g. 'do I have Zara?' -- filter with the keyword argument.",
+      "An agent needs a brand id before filtering or creating products for that brand.",
+      "The merchant wants to audit brand presentation, e.g. which brands are missing a logo or a description."
+    ],
+    "whenNotToUse": [
+      "The merchant named ONE specific brand and wants its full record -- use get_brand with the brand id instead.",
+      "The merchant wants the products belonging to a brand rather than the brands themselves -- use list_products filtered by brand instead.",
+      "The merchant is asking about product categories rather than brands -- use list_categories instead."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Pagination page number. The response returns one page of brands; increment to fetch the rest."
+          },
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Filter brands to those whose name matches this keyword."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The brand id, used by sibling brand and product tools."
+          },
+          "name": {
+            "type": "string",
+            "description": "The brand's display name, in the store's own language."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The brand's description as shown in the storefront; null when the merchant has not written one."
+          },
+          "logo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL of the brand's logo image; null when the brand has none."
+          },
+          "banner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL of the brand's banner image; null when the brand has none."
+          },
+          "en_char": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The brand's Latin-script name, used for alphabetical browsing when the name itself is in Arabic."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ui": {
+        "display": "table",
+        "title": "Store Brands"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "List Brands -- list all brands related to your store, filterable by a keyword matching brand names.",
+      "docsUrl": "https://docs.salla.dev/5394213e0",
+      "method": "GET",
+      "path": "/brands",
+      "auth": {
+        "scopes": [
+          "brands.read"
+        ]
+      },
+      "parameters": {
+        "query": [
+          {
+            "name": "page",
+            "description": "The pagination page number."
+          },
+          {
+            "name": "keyword",
+            "description": "A keyword to filter brands by a specific name."
+          }
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": true,
+        "pagination": "standard",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing or does not carry the brands.read scope, so the brands cannot be read until the app's authorization is fixed."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "validation": {
+    "rules": [
+      {
+        "field": "keyword",
+        "match": "\\S",
+        "message": "keyword must contain at least one non-whitespace character; omit it entirely to list every brand"
+      }
+    ]
+  },
+  "dependencies": [],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "keyBy": [
+        "page",
+        "keyword"
+      ],
+      "ttlSeconds": 300
+    }
+  }
+}
