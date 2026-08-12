@@ -101,6 +101,117 @@ def build_path(args):
     return BASE_URL.rstrip("/") + path
 
 
+def resolve_values(args):
+    """Turn readable values into the ones this store's API takes.
+
+    The tool accepts "shipped". Salla's order filter wants the id that state has
+    in THIS store -- 1201821018 here, something else next door -- so the name is
+    matched against the store's own records and replaced before the request is
+    built. The caller never sees the id, which is the point: it is an upstream
+    detail, like the host and the token, and an agent that had to know it would
+    be wrong every time it had not just looked it up.
+
+    A value that matches nothing fails the call by default, naming what the store
+    does have. That is deliberate and it is the whole reason this exists: Salla
+    does not reject a filter it cannot use, it ignores it and returns everything,
+    so a dropped value comes back looking like a complete answer.
+    """
+    resolved = dict(args)
+
+    for spec in QUERY_PARAMS:
+        resolver = spec.get("resolver")
+        if not resolver or spec["has_constant"]:
+            continue
+        value = args.get(spec["arg"])
+        if value is None:
+            continue
+
+        wanted = list(value) if isinstance(value, (list, tuple)) else [value]
+        records = fetch_records(resolver)
+
+        substituted, missing = [], []
+        for item in wanted:
+            match = match_record(item, records, resolver["match_on"])
+            if match is None:
+                missing.append(item)
+                continue
+            sent = dig(match, resolver["send_field"])
+            if sent is None:
+                missing.append(item)
+            else:
+                substituted.append(sent)
+
+        if missing and resolver["on_miss"] == "error":
+            known = sorted({
+                str(dig(record, path))
+                for record in records
+                for path in resolver["match_on"]
+                if dig(record, path) is not None
+            })
+            raise ToolError(
+                f"{CONTRACT}: {spec['arg']} -- this store has no "
+                f"{', '.join(repr(m) for m in missing)}. It has: {', '.join(known)}"
+            )
+
+        resolved[spec["arg"]] = substituted if isinstance(value, (list, tuple)) else (
+            substituted[0] if substituted else None
+        )
+
+    return resolved
+
+
+def fetch_records(resolver):
+    """One GET against the lookup the contract named."""
+    url = BASE_URL.rstrip("/") + resolver["path"]
+    headers = {"accept": "application/json"}
+{% if auth_scheme == "bearer" %}
+    headers["authorization"] = f"Bearer {os.environ.get(TOKEN_ENV, '')}"
+{% endif %}
+
+    try:
+        response = httpx.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
+    except httpx.HTTPError as exc:
+        raise ToolError(
+            f"{CONTRACT}: could not reach {resolver['contract']} to resolve a value -- {exc}"
+        ) from exc
+
+    if response.status_code not in SUCCESS_STATUSES:
+        raise ToolError(
+            f"{CONTRACT}: {resolver['contract']} returned {response.status_code} while "
+            f"resolving a value, so the filter could not be built"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ToolError(f"{CONTRACT}: {resolver['contract']} returned a non-JSON body") from exc
+
+    records = dig(payload, resolver["data_path"])
+    if isinstance(records, dict):
+        records = [records]
+    if not isinstance(records, list):
+        raise ToolError(
+            f"{CONTRACT}: {resolver['contract']} has no "
+            f"{'.'.join(resolver['data_path'])} to resolve against"
+        )
+    return records
+
+
+def match_record(value, records, match_on):
+    """The first record whose declared fields equal this value, ignoring case.
+
+    Equality rather than containment: a store with both 'delivered' and
+    'delivering' must not have one request quietly widen into the other.
+    """
+    wanted = str(value).strip().lower()
+    for record in records:
+        for path in match_on:
+            candidate = dig(record, path)
+            if candidate is not None and str(candidate).strip().lower() == wanted:
+                return record
+    return None
+
+
 def build_query(args):
     """Query parameters as (name, value) pairs, honoring each one's style.
 
@@ -243,6 +354,8 @@ def shape(payload):
 
 def run(args):
     validate(args)
+    # Before anything is built: readable values become the ones this store takes.
+    args = resolve_values(args)
     url = build_path(args)
     params = build_query(args)
     body = build_body(args)

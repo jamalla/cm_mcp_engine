@@ -55,8 +55,34 @@ def _mapping(spec: dict) -> dict[str, str]:
     return {"wire": wire, "arg": spec.get("from", wire)}
 
 
+def _resolver(spec: dict) -> dict | None:
+    """How a readable value becomes the one the upstream takes.
+
+    The tool's argument is a name a person would say -- "shipped". The upstream
+    wants the id that name has IN THIS STORE, which differs per merchant and so
+    cannot be written into a contract or known by an agent. The generated code
+    looks it up and substitutes, which keeps the translation next to the other
+    things the caller never sees: the host, the token, the array style.
+
+    Everything needed is inlined at generation time. The module runs in a
+    sandbox with no registry to consult, and the contracts gate is what holds
+    this copy in agreement with the contract it names.
+    """
+    resolve = spec.get("resolve")
+    if not resolve:
+        return None
+    return {
+        "contract": resolve["contract"],
+        "path": resolve["path"],
+        "data_path": resolve["dataPath"].split("."),
+        "match_on": [field.split(".") for field in resolve["matchOn"]],
+        "send_field": resolve["sendField"].split("."),
+        "on_miss": resolve.get("onMiss", "error"),
+    }
+
+
 def _query_mapping(spec: dict) -> dict:
-    """As above, plus array serialization and pinned constants.
+    """As above, plus array serialization, pinned constants, and value resolution.
 
     A `constant` is sent on every call and reads no argument -- the way a
     contract pins a filter the agent must not be able to change.
@@ -69,6 +95,7 @@ def _query_mapping(spec: dict) -> dict:
         "constant": spec.get("constant"),
         "has_constant": has_constant,
         "style": spec.get("style", "single"),
+        "resolver": _resolver(spec),
     }
 
 
