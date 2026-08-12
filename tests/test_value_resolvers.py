@@ -200,11 +200,23 @@ def test_the_current_rulebook_is_accepted():
     assert SUPPORTED_SCHEMA_IDS
 
 
-def test_a_rulebook_this_engine_does_not_implement_is_refused():
-    """Serving it partially is worse than not serving it.
+def test_the_previous_rulebook_is_still_served():
+    """The hazard runs one way, and this is not it.
 
-    An engine without `resolve` would ignore the block, send "shipped" where an
-    id belongs, and get every order back. Refusing is visible; that is not.
+    v2 is v1 plus an optional block, so a v1 contract holds nothing this engine
+    could mishandle -- and an engine is routinely upgraded before the registry it
+    serves is rebuilt. Refusing v1 would mean this engine could not serve the
+    registry pinned in its own repository, which is an outage rather than a guard.
+    """
+    assert unsupported_schema("https://contract-mcp.example/schemas/tool-contract.v1.json") is None
+
+
+def test_a_rulebook_this_engine_does_not_implement_is_refused():
+    """The direction that IS dangerous: a registry from the future.
+
+    An engine without `resolve` would not fail on such a contract -- it would
+    ignore the block, send "shipped" where an id belongs, and get every order
+    back. Refusing is visible; that is not.
     """
     problem = unsupported_schema("https://contract-mcp.example/schemas/tool-contract.v9.json")
     assert problem and "v9" in problem

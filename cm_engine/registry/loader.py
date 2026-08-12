@@ -30,15 +30,22 @@ SUPPORTED_KINDS = {"single-tool"}
 
 # The rulebooks this engine can execute faithfully. Not a courtesy check.
 #
-# v2 added `resolve` on a query parameter: a value the tool takes in readable
-# form that the upstream wants as a store-specific id. An engine that does not
-# implement it does not fail -- it ignores the block and sends the readable
-# value, and Salla answers an unusable filter by returning everything unfiltered.
-# The wrong answer arrives looking exactly like the right one.
+# The hazard runs one way only: an OLD engine reading a NEW registry. v2 added
+# `resolve` on a query parameter -- a value the tool takes in readable form that
+# the upstream wants as a store-specific id. An engine without it does not fail
+# on such a contract; it ignores the block and sends the readable value, and
+# Salla answers an unusable filter by returning everything. The wrong answer
+# arrives looking exactly like the right one, so the registry is refused rather
+# than partially honoured.
 #
-# So the version is refused rather than partially honoured. A skipped contract is
-# visible; a silently unfiltered one is not.
+# The other direction is safe and must keep working. v2 is v1 plus an optional
+# block, so every v1 contract is a valid v2 contract with nothing to mishandle,
+# and an engine is routinely upgraded before the registry it serves is rebuilt.
+# Refusing v1 here would mean this engine could not serve the registry currently
+# pinned in this very repository -- an upgrade that takes the service down until
+# two other merges land in the right order is not a guard, it is an outage.
 SUPPORTED_SCHEMA_IDS = {
+    "https://contract-mcp.example/schemas/tool-contract.v1.json",
     "https://contract-mcp.example/schemas/tool-contract.v2.json",
 }
 
