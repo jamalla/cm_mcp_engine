@@ -1,0 +1,264 @@
+{
+  "$schema": "../schema/tool-contract.v2.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "list_coupons",
+    "title": "List Store Coupons",
+    "description": "Returns a paginated list of the store's discount coupons, each with its code, discount type and amount, validity window, free-shipping flag, usage limits and usage statistics, optionally narrowed by a keyword or by a creation or expiry date range.",
+    "whenToUse": [
+      "The merchant wants to see the coupons their store has, e.g. 'what discount codes do I have?' or 'list my coupons'.",
+      "The merchant asks whether a particular code exists or what it gives, e.g. 'do I still have DEAL10?' -- filter with the keyword argument.",
+      "The merchant asks which coupons are about to expire or already have, e.g. 'which codes expire this month?' -- filter with expiresBetween and read expiry_date.",
+      "The merchant asks what they created in a period, e.g. 'the coupons I made in Ramadan' -- filter with createdBetween.",
+      "The merchant wants to know how much a coupon is being used, e.g. 'is anyone actually using my codes?' -- read the statistics field on each coupon.",
+      "An agent needs coupon ids or codes before reporting on, updating or deleting a specific coupon."
+    ],
+    "whenNotToUse": [
+      "The merchant named ONE specific coupon and wants its full record -- use get_coupon with the coupon id instead.",
+      "The merchant wants the individual generated codes that sit under a group coupon rather than the coupons themselves -- use list_coupon_codes instead.",
+      "The merchant wants to create, edit or delete a coupon -- this tool only reads; use create_coupon, update_coupon or delete_coupon instead.",
+      "The merchant is asking about automatic discounts that apply without a code, such as buy-one-get-one or bundle promotions -- use list_special_offers instead.",
+      "The merchant is asking about affiliate or marketer commission records rather than the coupons themselves -- use list_affiliates instead."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Pagination page number. The response returns one page of coupons; increment to fetch the rest."
+          },
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Filter coupons to those matching this keyword, e.g. part of a coupon code or a group name."
+          },
+          "createdBetween": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            },
+            "description": "Return only coupons CREATED inside this date range, given as exactly two YYYY-MM-DD dates, earliest first: ['2026-01-01', '2026-03-31']. Salla takes the range as a pair, so both ends are required -- for an open end, use a far date rather than omitting one."
+          },
+          "expiresBetween": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            },
+            "description": "Return only coupons whose EXPIRY date falls inside this range, given as exactly two YYYY-MM-DD dates, earliest first: ['2026-01-01', '2026-03-31']. This is the filter for 'what is expiring soon' and 'what has already lapsed'; it says nothing about when the coupon was created."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The coupon id, used by sibling coupon tools."
+          },
+          "code": {
+            "type": "string",
+            "description": "The code a customer types at checkout, e.g. 'DEAL10'. Quote this one back to a merchant, not the id."
+          },
+          "type": {
+            "type": "string",
+            "description": "How the discount is calculated: 'fixed' for a flat amount off, 'percentage' for a share of the cart."
+          },
+          "status": {
+            "type": "string",
+            "description": "Whether the coupon is currently usable, e.g. 'active' or 'inactive'. A coupon can be active and still be past its expiry_date, so check both before telling a merchant a code works."
+          },
+          "amount": {
+            "type": "object",
+            "description": "The discount the coupon gives. For a percentage coupon the amount is the percentage, not money.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The discount value."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code, e.g. 'SAR'."
+              }
+            }
+          },
+          "minimum_amount": {
+            "type": [
+              "object",
+              "number",
+              "null"
+            ],
+            "description": "The cart total a customer must reach before the coupon applies; null when there is no minimum. Salla returns this either as a bare number or as a {amount, currency} object depending on how the coupon was created, so read both shapes."
+          },
+          "start_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the coupon becomes usable, e.g. '2026-03-17 00:00:00'; null when it is usable immediately."
+          },
+          "expiry_date": {
+            "type": "string",
+            "description": "When the coupon stops working, e.g. '2026-03-17 00:00:00', in the store's timezone."
+          },
+          "free_shipping": {
+            "type": "boolean",
+            "description": "True when the coupon also waives the shipping cost."
+          },
+          "usage_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "How many times the coupon may be redeemed in total across the store; null when unlimited."
+          },
+          "usage_limit_per_user": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "How many times a single customer may redeem it; null when unlimited."
+          },
+          "statistics": {
+            "type": "object",
+            "description": "How the coupon has performed so far.",
+            "properties": {
+              "num_of_usage": {
+                "type": "integer",
+                "description": "How many times the coupon has been redeemed."
+              },
+              "num_of_customers": {
+                "type": "integer",
+                "description": "How many distinct customers have redeemed it."
+              },
+              "coupon_sales": {
+                "type": "object",
+                "description": "The sales value of the orders the coupon was used on -- {amount, currency}.",
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "description": "Total sales attributed to the coupon."
+                  },
+                  "currency": {
+                    "type": "string",
+                    "description": "ISO currency code, e.g. 'SAR'."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "code"
+        ]
+      },
+      "ui": {
+        "display": "table",
+        "title": "Store Coupons"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "List Coupons -- return a list of the store's coupons, filterable by a keyword and by a creation or expiration date range.",
+      "docsUrl": "https://docs.salla.dev/5394275e0",
+      "method": "GET",
+      "path": "/coupons",
+      "auth": {
+        "scopes": [
+          "marketing.read"
+        ]
+      },
+      "parameters": {
+        "query": [
+          {
+            "name": "page",
+            "description": "The pagination page number."
+          },
+          {
+            "name": "keyword",
+            "description": "A keyword matched against the coupon code and group name."
+          },
+          {
+            "name": "creation_date",
+            "from": "createdBetween",
+            "style": "bracket",
+            "description": "Creation date range, taken by Salla as an array of two YYYY-MM-DD dates and serialized Laravel-style as creation_date[]=2026-01-01&creation_date[]=2026-03-31."
+          },
+          {
+            "name": "expiration_date",
+            "from": "expiresBetween",
+            "style": "bracket",
+            "description": "Expiry date range, taken by Salla as an array of two YYYY-MM-DD dates and serialized Laravel-style as expiration_date[]=2026-01-01&expiration_date[]=2026-03-31."
+          }
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": true,
+        "pagination": "standard",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the marketing.read scope, so the store's coupons cannot be read until the app's authorization is fixed."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "validation": {
+    "rules": [
+      {
+        "field": "keyword",
+        "match": "\\S",
+        "message": "keyword must contain at least one non-whitespace character; omit it entirely to list every coupon"
+      }
+    ]
+  },
+  "dependencies": [],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "keyBy": [
+        "page",
+        "keyword",
+        "createdBetween",
+        "expiresBetween"
+      ],
+      "ttlSeconds": 300
+    }
+  }
+}
