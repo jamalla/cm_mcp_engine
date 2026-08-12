@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/tool-contract.v1.json",
-  "contractVersion": "1.0.0",
+  "contractVersion": "1.0.1",
   "kind": "single-tool",
   "interface": {
     "name": "list_products",
@@ -9,7 +9,7 @@
     "whenToUse": [
       "The merchant wants to see what they sell, e.g. 'what products do I have?' or 'show me my catalogue'.",
       "The merchant asks whether a product exists or wants to find it by name or SKU, e.g. 'do I still sell the leather wallet?' -- filter with the keyword argument.",
-      "The merchant asks which products are out of stock or hidden from the storefront -- filter with the status argument ('out' or 'hidden').",
+      "The merchant asks which products are out of stock or hidden from the storefront -- filter with the status argument ('out' or 'hidden'), and report stock from each product's quantity rather than its status.",
       "The merchant wants the products that sit inside one category, e.g. 'what's in my shoes category?' -- filter with the categoryId argument.",
       "An agent needs product ids, SKUs or current prices before reporting on or acting on specific products."
     ],
@@ -45,7 +45,7 @@
               "out",
               "hidden"
             ],
-            "description": "Filter products by status: 'sale' (on sale in the storefront), 'out' (out of stock) or 'hidden' (not shown in the storefront)."
+            "description": "Filter products by storefront state: 'sale' (on sale), 'out' (out of stock) or 'hidden' (not shown in the storefront). 'out' selects on stock availability, so it returns products holding no stock even when their own status field still reads 'sale' -- see the quantity field in the response."
           },
           "categoryId": {
             "type": "string",
@@ -74,11 +74,11 @@
           },
           "status": {
             "type": "string",
-            "description": "Product status: 'sale', 'out' or 'hidden'."
+            "description": "The product's own storefront state: 'sale', 'out' or 'hidden'. It can still read 'sale' for a product holding no stock, so do not report stock from this field -- read quantity instead."
           },
           "quantity": {
             "type": "integer",
-            "description": "Units currently in stock; not meaningful for products with unlimited quantity."
+            "description": "Units currently in stock, and the field to trust when answering a stock question: 0 means none left. Null for a product that does not track stock (unlimited quantity)."
           },
           "price": {
             "type": "object",
