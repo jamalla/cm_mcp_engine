@@ -1,0 +1,141 @@
+{
+  "$schema": "../schema/tool-contract.v1.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "list_order_statuses",
+    "title": "List Order Statuses",
+    "description": "Returns every order state this store uses -- id, slug, display name, parent and whether it is active -- so any flow that filters, reports on or moves orders by state uses a state the store actually has.",
+    "whenToUse": [
+      "A merchant names an order state in words -- 'returned', 'still under review', 'the ones out for delivery' -- and another tool needs that state's id. Resolve the wording here first: a store renames the built-in states and adds its own, so the merchant's words never map reliably to a fixed list.",
+      "Before reading orders narrowed to a state with list_orders.",
+      "Before anything that TARGETS orders in a state rather than merely reading them -- a coupon for customers whose orders are stuck mid-fulfilment, a report on one stage of delivery -- the state must be resolved before that tool is called.",
+      "The merchant asks which states their orders can be in, or which custom states they have added on top of the built-in ones.",
+      "A status-filtered call came back with no orders and there is no other reason to expect none -- the state may not exist under the name that was guessed, or the wrong id was passed."
+    ],
+    "whenNotToUse": [
+      "The merchant wants the orders themselves rather than the list of states -- resolve the state here, then call list_orders with it.",
+      "The merchant wants to move one order into a different state -- resolve the target state here, then use update_order_status; this tool only reads.",
+      "The state is already known from earlier in the same conversation -- a store's states change rarely, so do not re-fetch this per order or once per flow."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "THIS store's own id for the state. It is the id sibling order tools take; it is not stable across stores, which is why it has to be looked up rather than remembered."
+          },
+          "name": {
+            "type": "string",
+            "description": "The state as the merchant sees it, in the store's own language -- usually Arabic. Quote this one back to a merchant."
+          },
+          "slug": {
+            "type": "string",
+            "description": "The canonical Salla family the state belongs to, e.g. 'under_review' or 'restored'. NOT unique: a parent state and every custom state the merchant added under it share one slug, so a slug alone does not identify a state."
+          },
+          "type": {
+            "type": "string",
+            "description": "'original' for a state Salla supplies, 'custom' for one the merchant added."
+          },
+          "is_active": {
+            "type": "boolean",
+            "description": "Whether the state is in use. Do not offer an inactive state to a merchant or filter on one."
+          },
+          "sort": {
+            "type": "integer",
+            "description": "The state's position among its siblings, following the store's own fulfilment order."
+          },
+          "original": {
+            "type": "object",
+            "description": "The canonical Salla state this one derives from -- {id, name}. Where a store's own id is not what an endpoint wants, this is the id that is the same across every store.",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "The canonical Salla status id."
+              },
+              "name": {
+                "type": "string",
+                "description": "The canonical state's name."
+              }
+            }
+          },
+          "parent": {
+            "type": "object",
+            "description": "The state this one sits under -- {id, name} -- or null for a top-level state. States are two levels deep: a merchant's custom state hangs off the built-in one it refines, e.g. 'partially returned' under 'returned'."
+          },
+          "translations": {
+            "type": "object",
+            "description": "The state's name and customer message per language code, e.g. {'en': {'name': 'Delivered'}, 'ar': {...}}. Match an English word from the merchant against this when `name` is in another language."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "ui": {
+        "display": "table",
+        "title": "Order Statuses"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "List Order Statuses -- list all order statuses the store uses, including the custom ones the merchant has added.",
+      "method": "GET",
+      "path": "/orders/statuses",
+      "auth": {
+        "scopes": [
+          "orders.read"
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": true,
+        "pagination": "none",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the orders.read scope, so the store's order states cannot be read until the app's authorization is fixed."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "dependencies": [],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "ttlSeconds": 3600
+    }
+  }
+}

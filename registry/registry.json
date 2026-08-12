@@ -1,13 +1,14 @@
 {
-  "generatedAt": "2026-08-12T04:14:23+00:00",
+  "generatedAt": "2026-08-12T05:43:41+00:00",
   "sourceRepo": "cm_mcp_contracts",
-  "sourceCommit": "7b457927a743706bee5b48f9fac47197642ed744",
+  "sourceCommit": "6f33b881349bcbf3293e7dc2235fc25cc4704607",
   "schemaId": "https://contract-mcp.example/schemas/tool-contract.v1.json",
   "layout": "index",
-  "contentHash": "7f618e901831c9f7d39ef74609c72976b852100b2d08897fa2dee36c7d0c70ef",
-  "toolCount": 3,
+  "contentHash": "36a3691611328ed5039685b1eeea63696f185c2fee76b1c7d21e954f443539e1",
+  "toolCount": 4,
   "toolNames": [
     "list_categories",
+    "list_order_statuses",
     "list_orders",
     "list_products"
   ],
@@ -17,6 +18,12 @@
       "version": "1.0.0",
       "path": "contracts/list_categories.json",
       "sha256": "02d49cf89e62a98936e11cbea9973ebacb520790daed278881904ef9add8d84c"
+    },
+    {
+      "name": "list_order_statuses",
+      "version": "1.0.0",
+      "path": "contracts/list_order_statuses.json",
+      "sha256": "7fee76466f9d5c0571932a1df7a7a6f1382de665f23677977564fc30d9a60df4"
     },
     {
       "name": "list_orders",
