@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-12T05:43:41+00:00",
+  "generatedAt": "2026-08-12T06:26:21+00:00",
   "sourceRepo": "cm_mcp_contracts",
-  "sourceCommit": "6f33b881349bcbf3293e7dc2235fc25cc4704607",
+  "sourceCommit": "0ce6bc7c15087951ed2fe129512bb029154bc34c",
   "schemaId": "https://contract-mcp.example/schemas/tool-contract.v1.json",
   "layout": "index",
-  "contentHash": "36a3691611328ed5039685b1eeea63696f185c2fee76b1c7d21e954f443539e1",
+  "contentHash": "de58b9fba24910daeaa4621ab7a8906930be739677a6574e980f14f80cee55e5",
   "toolCount": 4,
   "toolNames": [
     "list_categories",
@@ -27,9 +27,9 @@
     },
     {
       "name": "list_orders",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "path": "contracts/list_orders.json",
-      "sha256": "9b1f402cb153ffb3fa2db49bf62e2f70cd9204f7a2ea6176d5c7a3474bc2abc2"
+      "sha256": "2b765ef2c71c43f80be73f05344b59557a91a74446f3dbdb0b93a239e8021494"
     },
     {
       "name": "list_products",
