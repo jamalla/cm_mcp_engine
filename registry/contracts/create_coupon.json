@@ -1,0 +1,304 @@
+{
+  "$schema": "../schema/tool-contract.v2.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "create_coupon",
+    "title": "Create Discount Coupon",
+    "description": "Creates ONE discount coupon in the store -- a percentage or fixed-amount code with an expiry date and optional spend, cap and redemption limits -- and returns the created coupon.",
+    "whenToUse": [
+      "The merchant explicitly asks to create a discount code, e.g. 'create a 10% off coupon called SUMMER10 that expires at the end of August'.",
+      "The merchant explicitly asks for a fixed-amount discount, e.g. 'make a 50 SAR off code for orders over 300' -- set type to 'fixed', amount to 50 and minimumAmount to 300.",
+      "The merchant explicitly asks to cap a percentage discount, e.g. '15% off but never more than 100 SAR' -- set type 'percentage', amount 15 and maximumAmount 100.",
+      "The merchant explicitly asks for a coupon that starts later, e.g. 'set up an Eid code that begins next Friday' -- set startDate; the coupon is created immediately but customers cannot redeem it before that date.",
+      "The merchant explicitly asks to limit redemptions, e.g. 'only the first 100 customers' or 'one use per customer' -- set usageLimit and usageLimitPerUser."
+    ],
+    "whenNotToUse": [
+      "The merchant wants to see, search or audit the coupons that already exist rather than add one -- use list_coupons instead.",
+      "The merchant named one existing coupon and wants its details, or wants to confirm a coupon this tool just created actually persisted -- use get_coupon with the id this tool returns.",
+      "The merchant wants to change, disable or extend a coupon that already exists -- this tool only creates new ones and cannot edit; use update_coupon instead.",
+      "The merchant wants a bulk campaign of many generated codes sharing one prefix (Salla's group coupons, is_group) -- this tool creates a single code; use create_group_coupon instead.",
+      "The merchant wants an affiliate or influencer coupon that tracks a marketer's sales (Salla's marketing coupons, marketing_active) -- use create_marketing_coupon instead.",
+      "The merchant is asking about promotional banners or store-wide offers rather than a redeemable code -- use list_special_offers instead."
+    ],
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The code customers type at checkout, e.g. 'SUMMER10'. Must be unique in the store -- Salla rejects a code that already exists, so check with list_coupons before creating one the merchant may already have."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "fixed",
+              "percentage"
+            ],
+            "description": "How the discount is calculated: 'percentage' takes amount as a percentage off the order, 'fixed' takes amount off as a flat sum in the store's currency."
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "The size of the discount: a percentage when type is 'percentage' (10 means 10% off), or a flat sum in the store's currency when type is 'fixed' (50 means 50 SAR off). Send a plain number here -- the created coupon reports it back as an {amount, currency} object."
+          },
+          "expiryDate": {
+            "type": "string",
+            "description": "The last day the coupon can be redeemed, as YYYY-MM-DD. Required by Salla: a coupon with no expiry cannot be created through this endpoint."
+          },
+          "freeShipping": {
+            "type": "boolean",
+            "description": "Whether redeeming the coupon also makes the order ship free. Required by Salla, so state it explicitly; false is the ordinary discount-only coupon."
+          },
+          "excludeSaleProducts": {
+            "type": "boolean",
+            "description": "Whether products already discounted in a sale are excluded from this coupon. Required by Salla. True stops the coupon stacking on top of sale prices, which is what a merchant usually means by 'not on items already reduced'."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "The first day the coupon can be redeemed, as YYYY-MM-DD. Omit to make it usable immediately. A future date creates a scheduled coupon, which list_coupons reports with the 'not_started' status."
+          },
+          "minimumAmount": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The smallest order total, in the store's currency, that the coupon applies to -- 'on orders over 300'. Omit for no minimum."
+          },
+          "maximumAmount": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The largest discount the coupon may ever take off, in the store's currency. Mainly for percentage coupons, to stop a large order taking an unbounded discount. Omit for no cap."
+          },
+          "usageLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many times the coupon may be redeemed across the whole store -- 'the first 100 customers'. Omit for unlimited redemptions."
+          },
+          "usageLimitPerUser": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many times one customer may redeem the coupon. Set 1 for the common 'one use per customer'. Omit for unlimited per customer."
+          }
+        },
+        "required": [
+          "code",
+          "type",
+          "amount",
+          "expiryDate",
+          "freeShipping",
+          "excludeSaleProducts"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The new coupon's id. Hand it to get_coupon to confirm the coupon persisted, and keep it for any later change."
+          },
+          "code": {
+            "type": "string",
+            "description": "The code customers type at checkout, as Salla stored it. Report this back to the merchant verbatim -- Salla may not preserve the exact casing that was sent."
+          },
+          "type": {
+            "type": "string",
+            "description": "'fixed' or 'percentage', echoing how the discount is calculated."
+          },
+          "status": {
+            "type": "string",
+            "description": "The coupon's toggle as created: 'active' means customers can already redeem it once startDate has passed, 'inactive' means it exists but is switched off."
+          },
+          "amount": {
+            "type": "object",
+            "description": "The discount as Salla stored it. Note the asymmetry: a plain number was sent, but it comes back as a money object -- do not report this field as a bare number.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The discount value."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the store, e.g. 'SAR'."
+              }
+            }
+          },
+          "maximum_amount": {
+            "type": "object",
+            "description": "The cap on the discount, as a money object. An amount of 0 means no cap was set, not a coupon worth nothing.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The cap value."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the store."
+              }
+            }
+          },
+          "expiry_date": {
+            "type": "string",
+            "description": "When the coupon stops working, returned as 'YYYY-MM-DD HH:MM:SS' even though a plain date was sent."
+          },
+          "start_date": {
+            "type": "string",
+            "description": "When the coupon starts working, as 'YYYY-MM-DD HH:MM:SS'. Null when no startDate was set, which means it is usable immediately."
+          },
+          "free_shipping": {
+            "type": "boolean",
+            "description": "Whether redeeming the coupon also makes the order ship free."
+          }
+        },
+        "required": [
+          "id",
+          "code"
+        ]
+      },
+      "ui": {
+        "display": "card",
+        "title": "Coupon {code}",
+        "primary": "{type}",
+        "secondary": "{expiry_date}"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "Create Coupon -- create a single discount coupon. Salla's same endpoint also creates group and marketing coupons behind extra required field sets, which this tool deliberately does not expose.",
+      "docsUrl": "https://docs.salla.dev/5394274e0",
+      "method": "POST",
+      "path": "/coupons",
+      "auth": {
+        "scopes": [
+          "marketing.read_write"
+        ]
+      },
+      "parameters": {
+        "body": {
+          "mode": "mapped",
+          "fields": [
+            {
+              "name": "code",
+              "description": "The coupon code customers type at checkout."
+            },
+            {
+              "name": "type",
+              "description": "'fixed' or 'percentage'."
+            },
+            {
+              "name": "amount",
+              "description": "The discount value, as a plain number."
+            },
+            {
+              "name": "expiry_date",
+              "from": "expiryDate",
+              "description": "Last day the coupon works, YYYY-MM-DD."
+            },
+            {
+              "name": "free_shipping",
+              "from": "freeShipping",
+              "description": "Whether the coupon also gives free shipping."
+            },
+            {
+              "name": "exclude_sale_products",
+              "from": "excludeSaleProducts",
+              "description": "Whether products already on sale are excluded."
+            },
+            {
+              "name": "start_date",
+              "from": "startDate",
+              "description": "First day the coupon works, YYYY-MM-DD."
+            },
+            {
+              "name": "minimum_amount",
+              "from": "minimumAmount",
+              "description": "Smallest order total the coupon applies to."
+            },
+            {
+              "name": "maximum_amount",
+              "from": "maximumAmount",
+              "description": "Largest discount the coupon may take off."
+            },
+            {
+              "name": "usage_limit",
+              "from": "usageLimit",
+              "description": "Total redemptions allowed across the store."
+            },
+            {
+              "name": "usage_limit_per_user",
+              "from": "usageLimitPerUser",
+              "description": "Redemptions allowed per customer."
+            }
+          ]
+        }
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": false,
+        "pagination": "none",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "fieldsPath": "error.fields",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the marketing.read_write scope, so no coupon was created and the app's authorization has to be fixed first."
+            },
+            {
+              "status": 422,
+              "meaning": "Salla rejected the coupon and created nothing -- usually a code that already exists in the store, or a required field missing or malformed. The top-level message is a translation key like 'alert.invalid_fields' and is not worth relaying; read error.fields, which names each bad field with a human reason, and tell the merchant which value to change."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "validation": {
+    "rules": [
+      {
+        "field": "type",
+        "match": "^(fixed|percentage)$",
+        "message": "type must be either 'fixed' or 'percentage'"
+      },
+      {
+        "field": "expiryDate",
+        "match": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "message": "expiryDate must be a calendar date in YYYY-MM-DD form, e.g. 2026-12-31"
+      },
+      {
+        "field": "startDate",
+        "match": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+        "message": "startDate must be a calendar date in YYYY-MM-DD form, e.g. 2026-12-31"
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "contract": "list_coupons",
+      "reason": "coupon codes must be unique in the store, so the agent should check the merchant's existing coupons with list_coupons before creating one that would be rejected as a duplicate"
+    }
+  ],
+  "governance": {
+    "execution": {
+      "mode": "propose-apply",
+      "humanApproval": "required"
+    },
+    "caching": {
+      "cacheable": false
+    }
+  }
+}
