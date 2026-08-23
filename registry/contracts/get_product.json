@@ -1,0 +1,295 @@
+{
+  "$schema": "../schema/tool-contract.v2.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "get_product",
+    "title": "Get Product Details",
+    "description": "Returns the full details of ONE product by its id -- description, price, stock, storefront links, categories, and its option and variant breakdown.",
+    "whenToUse": [
+      "The merchant named one specific product and wants everything about it, e.g. 'tell me about the leather wallet' or 'show me product 1672932878'.",
+      "The merchant asks about a product's variants or options, e.g. 'which sizes of the T-Shirt are left?' -- read the skus array for per-variant stock and price, and options for the choices a customer sees.",
+      "The merchant asks for a product's full description, storefront link or admin link to share or check, which the listing tool does not carry.",
+      "The merchant asks which categories one product belongs to, e.g. 'is the T-Shirt still in the summer category?'.",
+      "An agent already holds a product id -- from list_products, an order line, or the merchant -- and needs the current price or stock before reporting on it."
+    ],
+    "whenNotToUse": [
+      "The merchant wants to browse, count or filter the catalogue rather than inspect one item, e.g. 'what products do I have?' or 'which products are out of stock?' -- use list_products instead.",
+      "The merchant identified the product by its SKU rather than by its id -- use get_product_by_sku, or resolve the SKU to an id with the keyword filter on list_products first.",
+      "The merchant wants to change the product's price, stock, status or details -- this tool only reads; use update_product instead.",
+      "The merchant asked about a category and its contents rather than one product -- use list_categories, or the categoryId filter on list_products."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "description": "The id of the product to fetch, as a digits-only string. Ids come from list_products, from an order's items, or from the merchant. This is the product id, not the SKU -- a SKU like '23-TD23-32' will not resolve here."
+          }
+        },
+        "required": [
+          "productId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The product id, to pass to sibling product tools."
+          },
+          "name": {
+            "type": "string",
+            "description": "The product's display name."
+          },
+          "sku": {
+            "type": "string",
+            "description": "The merchant's stock keeping unit for the product."
+          },
+          "description": {
+            "type": "string",
+            "description": "The product's full storefront description. It may contain HTML and may be empty; it is the main detail this tool carries that list_products does not."
+          },
+          "status": {
+            "type": "string",
+            "description": "The product's own storefront state: 'sale', 'out' or 'hidden'. It can still read 'sale' for a product holding no stock, so do not report stock from this field -- read quantity instead."
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Units currently in stock for the product as a whole: 0 means none left. Meaningless for a product with unlimited quantity, and for a product with variants the per-variant stock in skus is the number to report."
+          },
+          "price": {
+            "type": "object",
+            "description": "The product's current regular price.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The price value."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the store, e.g. 'SAR'."
+              }
+            }
+          },
+          "sale_price": {
+            "type": "object",
+            "description": "The discounted price while the product is on sale. An amount of 0 means no sale price is set, so quote price instead.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The discounted price value."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the store."
+              }
+            }
+          },
+          "urls": {
+            "type": "object",
+            "description": "Where the product lives, for the merchant to open or share.",
+            "properties": {
+              "customer": {
+                "type": "string",
+                "description": "The public storefront URL customers see."
+              },
+              "admin": {
+                "type": "string",
+                "description": "The Salla dashboard URL for editing the product."
+              }
+            }
+          },
+          "categories": {
+            "type": "array",
+            "description": "The categories this product is filed under. Empty when the merchant has filed it nowhere.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "description": "The category id, as used by list_categories."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The category's display name."
+                }
+              }
+            }
+          },
+          "options": {
+            "type": "array",
+            "description": "The choices a customer picks on the product page, e.g. Color or Size. Empty for a product sold in one form only.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "description": "The option id."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The option's name, e.g. 'Color'."
+                },
+                "values": {
+                  "type": "array",
+                  "description": "The selectable values for this option.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "description": "The option value id."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "The value's name, e.g. 'Blue'."
+                      },
+                      "is_out_of_stock": {
+                        "type": "boolean",
+                        "description": "True when this value can no longer be selected because it has sold out."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "skus": {
+            "type": "array",
+            "description": "The purchasable variants, one per combination of option values. This is where per-variant price and stock live, and the field to read when the merchant asks which size or colour is left.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "description": "The variant id."
+                },
+                "sku": {
+                  "type": "string",
+                  "description": "The variant's own stock keeping unit."
+                },
+                "stock_quantity": {
+                  "type": "integer",
+                  "description": "Units of this specific variant in stock: 0 means this variant has sold out even when other variants have not."
+                },
+                "unlimited_quantity": {
+                  "type": "boolean",
+                  "description": "True when this variant does not track stock, which makes stock_quantity meaningless for it."
+                },
+                "price": {
+                  "type": "object",
+                  "description": "The variant's own price, which may differ from the product's.",
+                  "properties": {
+                    "amount": {
+                      "type": "number",
+                      "description": "The price value."
+                    },
+                    "currency": {
+                      "type": "string",
+                      "description": "ISO currency code of the store."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ui": {
+        "display": "card",
+        "title": "{name}",
+        "primary": "{sku}",
+        "secondary": "{status}"
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "Product Details -- return the details of one specific product by passing the product id as a path parameter.",
+      "docsUrl": "https://docs.salla.dev/product/product-details",
+      "method": "GET",
+      "path": "/products/{product}",
+      "auth": {
+        "scopes": [
+          "products.read"
+        ]
+      },
+      "parameters": {
+        "path": [
+          {
+            "name": "product",
+            "from": "productId",
+            "description": "Unique identification number assigned to a product."
+          }
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": false,
+        "pagination": "none",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the products.read scope, so this product cannot be read until the app's authorization is fixed."
+            },
+            {
+              "status": 404,
+              "meaning": "No product with this id exists in the store -- the id is wrong, belongs to another store, or the product has been deleted. Confirm the id with list_products before telling the merchant the product is gone."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "validation": {
+    "rules": [
+      {
+        "field": "productId",
+        "match": "^[0-9]+$",
+        "message": "productId must be a numeric product id as returned by list_products, not a SKU or a product name"
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "contract": "list_products",
+      "reason": "this tool requires a product id, and list_products is where the agent finds it when the merchant names a product rather than an id"
+    }
+  ],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "cacheable": true,
+      "keyBy": [
+        "productId"
+      ],
+      "ttlSeconds": 300
+    }
+  }
+}
