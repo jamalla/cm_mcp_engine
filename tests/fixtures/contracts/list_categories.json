@@ -1,5 +1,5 @@
 {
-  "$schema": "../schema/tool-contract.v1.json",
+  "$schema": "../schema/tool-contract.v3.json",
 
   "contractVersion": "1.0.0",
   "kind": "single-tool",
@@ -66,8 +66,31 @@
         "required": ["id", "name"]
       },
       "ui": {
-        "display": "table",
-        "title": "Store Categories"
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          { "id": "root", "component": "Column", "children": ["heading", "rows"] },
+          {
+            "id": "heading",
+            "component": "Text",
+            "text": {
+              "call": "pluralize",
+              "args": { "value": { "path": "/count" }, "one": "1 category", "other": "${/count} categories" },
+              "returnType": "string"
+            },
+            "variant": "h4"
+          },
+          { "id": "rows", "component": "List", "children": { "componentId": "row", "path": "/items" } },
+
+          {
+            "id": "row",
+            "component": "Row",
+            "_comment": "A contract annotation, kept here on purpose: the engine must strip it, because A2UI's catalog sets unevaluatedProperties false and would reject the message.",
+            "children": ["row_name", "row_status"],
+            "justify": "spaceBetween"
+          },
+          { "id": "row_name", "component": "Text", "text": { "path": "name" }, "weight": 3 },
+          { "id": "row_status", "component": "Text", "text": { "path": "status" }, "variant": "caption", "weight": 1 }
+        ]
       }
     }
   },
