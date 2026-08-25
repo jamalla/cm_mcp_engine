@@ -41,6 +41,16 @@ DIRECT_TOOL = OFFLINE_TOOL or _first(lambda e: not e.needs_approval)
 CACHEABLE_TOOL = _first(lambda e: e.caching.get("cacheable") and not e.needs_approval)
 APPROVAL_TOOL = _first(lambda e: e.needs_approval)
 
+# A tool that declares an A2UI surface, which the tools above may well not be:
+# `DIRECT_TOOL` prefers a builtin, and a builtin has no surface to declare. That
+# gap is not hypothetical -- it let a change to the event order pass every test
+# here and fail later against the published registry, where no builtin exists
+# and the first direct tool does carry a surface.
+SURFACED_TOOL = _first(
+    lambda e: not e.needs_approval
+    and ((e.interface.get("response") or {}).get("ui") or {}).get("components")
+)
+
 
 def _args_for(entry: ToolEntry, **overrides) -> dict:
     """Plausible arguments from the contract's own input schema.
@@ -170,6 +180,46 @@ async def test_list_contracts_hides_the_binding():
 
 
 @pytest.mark.usefixtures("mock_upstream")
+async def test_a_surfaced_tool_streams_its_tree_before_it_runs():
+    """A contract's A2UI surface reaches the client, in the right order.
+
+    The tree is knowable from the contract, so it goes out at selection --
+    before the upstream is called -- and the data follows the result. A client
+    can therefore draw the shape of the answer while the call is still running,
+    which is the whole reason the two halves are separate messages.
+
+    Driven by SURFACED_TOOL rather than DIRECT_TOOL on purpose: the latter
+    prefers a builtin, which has no surface, so it cannot see this at all.
+    """
+    if SURFACED_TOOL is None:
+        pytest.skip("this registry has no contract that declares a surface")
+
+    collector = Collector()
+    async with Client(mcp, log_handler=collector) as client:
+        await client.call_tool(
+            SURFACED_TOOL.name, {**_args_for(SURFACED_TOOL), "run_id": "S1"}
+        )
+
+    types = collector.types_for("S1")
+    assert types.index("contract_selected") < types.index("surface") < types.index("executing")
+
+    surfaces = [e for e in collector.events if e.run_id == "S1" and e.type == "surface"]
+    kinds = [
+        key
+        for event in surfaces
+        for message in event.data["messages"]
+        for key in message
+        if key != "version"
+    ]
+    # createSurface and updateComponents come from the contract; updateDataModel
+    # can only follow a result, so it is absent when the call itself failed.
+    assert kinds[:2] == ["createSurface", "updateComponents"]
+    if "result" in types:
+        assert kinds[2:] == ["updateDataModel"]
+
+
+
+@pytest.mark.usefixtures("mock_upstream")
 async def test_the_whole_pipeline_runs_and_reports_every_stage():
     """codegen -> sandbox -> execution, traced over MCP notifications.
 
@@ -188,8 +238,18 @@ async def test_the_whole_pipeline_runs_and_reports_every_stage():
         )
 
     types = collector.types_for("R1")
-    assert types[:3] == ["contract_selected", "code_generated", "executing"]
+    # The core stages, in order -- not at fixed positions. Which OTHER events
+    # appear depends on the contract: one that declares an A2UI surface also
+    # emits `surface` between selection and codegen, and this test is meant to
+    # hold for a registry it has never seen. Pinning the first three positions
+    # made it a test of what the registry happens to contain.
+    core = [t for t in types if t in {"contract_selected", "code_generated", "executing"}]
+    assert core == ["contract_selected", "code_generated", "executing"]
+    assert types[0] == "contract_selected"
     assert types[-1] == "done"
+    # A surface can only be described after the contract it came from was named.
+    if "surface" in types:
+        assert types.index("contract_selected") < types.index("surface")
     # Either it produced a result or it said why not -- never silence.
     assert ("result" in types) or ("error" in types)
     if result.data["status"] == "ok":
