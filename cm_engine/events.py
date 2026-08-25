@@ -23,6 +23,7 @@ CACHE_STORE = "cache_store"
 CACHE_HIT = "cache_hit"
 ERROR = "error"
 PROPOSAL = "proposal"  # propose-apply: a write awaiting human approval
+SURFACE = "surface"  # A2UI messages: the component tree, then the data it binds
 DONE = "done"  # carries total durationMs
 
 # The single key every stage event is nested under inside an MCP notification's
@@ -44,6 +45,7 @@ EVENT_TYPES = frozenset(
         CACHE_HIT,
         ERROR,
         PROPOSAL,
+        SURFACE,
         DONE,
     }
 )

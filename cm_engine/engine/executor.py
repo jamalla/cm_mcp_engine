@@ -19,7 +19,7 @@ from cm_engine.cache.code_cache import CodeCache
 from cm_engine.cache.result_cache import ResultCache, cache_key, is_cacheable
 from cm_engine.config import resolve_upstream, upstream_base_url
 from cm_engine.credentials import Principal, default_principal, provider
-from cm_engine.engine import codemode
+from cm_engine.engine import a2ui, codemode
 from cm_engine.engine.sandbox import run_module
 from cm_engine.events import EmitSink, Emitter
 from cm_engine.registry.loader import Registry, ToolEntry
@@ -91,8 +91,13 @@ class Executor:
             contractName=entry.name,
             version=entry.version,
             contract=entry.raw_contract(),
-            uiHint=entry.interface.get("response", {}).get("ui"),
         )
+
+        # The component tree comes from the contract, so it is known before the
+        # call goes out. Sending it here is what A2UI's split is for: the shape
+        # of the answer renders while the sandbox is still working, and the
+        # result fills it in when it arrives.
+        await self._emit_surface(emitter, entry, run_id, a2ui.structure_messages)
 
         generation = codemode.generation_id(entry)
         key = cache_key(entry, args, generation=generation, principal=principal.cache_scope)
@@ -104,12 +109,8 @@ class Executor:
                 await emitter.emit(
                     ev.CACHE_HIT, key=key, storedAt=hit.stored_at, expiresAt=hit.expires_at
                 )
-                await emitter.emit(
-                    ev.RESULT,
-                    output=hit.value,
-                    fromCache=True,
-                    uiHint=entry.interface.get("response", {}).get("ui"),
-                )
+                await emitter.emit(ev.RESULT, output=hit.value, fromCache=True)
+                await self._emit_data(emitter, entry, run_id, hit.value)
                 duration = elapsed()
                 await emitter.emit(ev.DONE, durationMs=duration, cached=True)
                 return ExecutionOutcome(
@@ -183,12 +184,8 @@ class Executor:
             await emitter.emit(ev.DONE, durationMs=duration, failed=True)
             return ExecutionOutcome("error", error=sandbox.error, duration_ms=duration)
 
-        await emitter.emit(
-            ev.RESULT,
-            output=sandbox.output,
-            fromCache=False,
-            uiHint=entry.interface.get("response", {}).get("ui"),
-        )
+        await emitter.emit(ev.RESULT, output=sandbox.output, fromCache=False)
+        await self._emit_data(emitter, entry, run_id, sandbox.output)
 
         # --- store, but only if the contract allows it -------------------
         if is_cacheable(entry):
@@ -213,6 +210,25 @@ class Executor:
         if upstream is None:
             return {}
         return {name: provider.resolve(upstream, principal) for name in codemode.required_secrets(entry)}
+
+    @staticmethod
+    async def _emit_surface(emitter, entry: ToolEntry, run_id: str, build) -> None:
+        """Send one batch of A2UI messages, if this contract declares a surface.
+
+        The surface id is the run id: two runs on one connection render into two
+        surfaces rather than overwriting each other, and a client that missed the
+        tree can tell which data belongs to what.
+        """
+        messages = build(entry, run_id)
+        if messages:
+            await emitter.emit(ev.SURFACE, surfaceId=run_id, messages=messages)
+
+    @staticmethod
+    async def _emit_data(emitter, entry: ToolEntry, run_id: str, output: Any) -> None:
+        """The values the tree binds to, once there are any."""
+        messages = a2ui.data_messages(entry, run_id, output)
+        if messages:
+            await emitter.emit(ev.SURFACE, surfaceId=run_id, messages=messages)
 
     @staticmethod
     def _proposal_preview(entry: ToolEntry, args: dict[str, Any]) -> str:

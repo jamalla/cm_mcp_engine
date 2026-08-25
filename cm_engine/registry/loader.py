@@ -44,9 +44,17 @@ SUPPORTED_KINDS = {"single-tool"}
 # Refusing v1 here would mean this engine could not serve the registry currently
 # pinned in this very repository -- an upgrade that takes the service down until
 # two other merges land in the right order is not a guard, it is an outage.
+#
+# v3 replaces `interface.response.ui` with an A2UI surface, and is added here for
+# the same reason: this engine builds those messages, so it can serve one. The
+# backward direction stays safe without a special case. A v1 or v2 contract
+# carries the old display hint, which has no `components`, so no surface is built
+# for it and the client renders the payload as it did before -- older contracts
+# lose a rendering they never really had rather than breaking.
 SUPPORTED_SCHEMA_IDS = {
     "https://contract-mcp.example/schemas/tool-contract.v1.json",
     "https://contract-mcp.example/schemas/tool-contract.v2.json",
+    "https://contract-mcp.example/schemas/tool-contract.v3.json",
 }
 
 
