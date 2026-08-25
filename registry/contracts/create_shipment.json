@@ -1,0 +1,546 @@
+{
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "create_shipment",
+    "title": "Create Shipment",
+    "description": "Books ONE outbound shipment with a shipping company -- the courier, the packages, the destination address and how it is paid for -- and returns the created shipment with its tracking number and tracking link.",
+    "whenToUse": [
+      "The merchant explicitly asks to ship an order, e.g. 'create a shipment for order 560695738 with DHL' -- set orderId and courierId, and the shipment shows up on that order.",
+      "The merchant explicitly asks for a cash-on-delivery shipment, e.g. 'send it COD, the customer pays 250 on delivery' -- set paymentMethod to 'cod' and cashOnDelivery to the amount the courier must collect.",
+      "The merchant explicitly asks to ship an already-paid order, e.g. 'the customer paid online, just book the pickup' -- set paymentMethod to 'pre_paid' and leave cashOnDelivery out.",
+      "The merchant explicitly asks to dispatch from a particular branch, e.g. 'the courier should collect from the Riyadh warehouse' -- set shipFrom.branch_id to that branch's id from list_branches.",
+      "The merchant explicitly asks to ship goods that are not tied to an order, e.g. 'send two boxes of samples to this address' -- describe them in packages and omit orderId."
+    ],
+    "whenNotToUse": [
+      "The merchant wants to see the shipments that already exist, or find the one for an order -- this tool books a new shipment and never reads; use list_shipments instead.",
+      "The merchant named one existing shipment and wants its details, or wants to confirm the shipment this tool just booked actually persisted -- use get_shipment with the id this tool returns.",
+      "The merchant wants to know where a parcel is right now -- the tracking_number and tracking_link this tool returns are the created shipment's, not a live position; use track_shipment instead.",
+      "The merchant wants the customer to send goods BACK -- this tool books outbound shipments only (shipmentType is always 'shipment'); a return is raised against the original shipment with create_shipment_return.",
+      "The merchant wants to stop a shipment that has already been booked -- this tool cannot amend or withdraw one; use cancel_shipment, or update_shipment to correct its details.",
+      "The merchant is asking which couriers the store can use, or what a courier would charge -- use list_shipping_companies and list_estimate_rates instead; this tool needs a courierId that is already known.",
+      "The merchant only wants the order marked as shipped in the storefront, without booking a courier -- that is an order status change; use update_order_status instead."
+    ],
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "input": {
+      "_comment_nesting": "Top-level arguments are camelCase, as the registry's convention requires. The inner keys of the object and array arguments (shipTo, shipFrom, packages, cashOnDelivery) are deliberately the upstream's own snake_case names: binding.http.parameters renames the field it maps, not the keys inside its value, so an object's contents travel to Salla verbatim. Renaming them here would send Salla keys it does not know.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "courierId": {
+            "type": "integer",
+            "description": "The id of the shipping company that will carry the shipment, e.g. the store's DHL or SMSA entry. Salla rejects a courier the store has not enabled, so take the id from the store's shipping companies rather than guessing one."
+          },
+          "shipmentType": {
+            "type": "string",
+            "enum": [
+              "shipment"
+            ],
+            "description": "Always 'shipment'. Salla's endpoint also accepts 'return', which needs the original shipment's id and books the parcel in the opposite direction; this tool deliberately does not create returns -- use create_shipment_return for those."
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "cod",
+              "pre_paid"
+            ],
+            "description": "How the shipment is paid for: 'cod' means the courier collects money from the customer on delivery, 'pre_paid' means the order was already paid and the courier collects nothing. Pair 'cod' with cashOnDelivery so the courier knows the amount."
+          },
+          "packages": {
+            "type": "array",
+            "minItems": 1,
+            "description": "What is physically in the shipment -- one entry per item the courier is carrying. Required by Salla: a shipment with no packages is rejected. Take the names, SKUs, quantities and prices from the order being shipped rather than inventing them.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "What the item is, as it should read on the courier's manifest, e.g. 'Cotton T-Shirt'."
+                },
+                "sku": {
+                  "type": "string",
+                  "description": "The item's SKU in the store, so the shipment can be reconciled against the order line."
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "How many units of this item are in the shipment."
+                },
+                "price": {
+                  "type": "object",
+                  "description": "What the item is worth, which couriers use for declared value and customs. Salla money is always {amount, currency}, never a bare number.",
+                  "properties": {
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "The item's value."
+                    },
+                    "currency": {
+                      "type": "string",
+                      "description": "ISO currency code, e.g. 'SAR'."
+                    }
+                  }
+                },
+                "weight": {
+                  "type": "object",
+                  "description": "How heavy the item is. Couriers price on weight, so a wrong value here changes what the merchant is charged.",
+                  "properties": {
+                    "value": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "The weight, in the units named beside it."
+                    },
+                    "units": {
+                      "type": "string",
+                      "enum": [
+                        "kg",
+                        "g",
+                        "lb",
+                        "oz"
+                      ],
+                      "description": "The unit the weight is expressed in."
+                    }
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "quantity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "shipTo": {
+            "type": "object",
+            "description": "Where the parcel is going, and who receives it. Copy these values from the order's shipping address -- never invent an address, because a wrong one sends a real parcel to a real wrong place. Salla made this block mandatory on 5 January 2026, together with the Saudi National Address fields below.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Who receives the parcel."
+              },
+              "phone": {
+                "type": "string",
+                "description": "The recipient's phone number -- couriers call it before delivering, so a shipment without a reachable number tends to fail."
+              },
+              "email": {
+                "type": "string",
+                "description": "The recipient's email address, used for the courier's delivery notifications."
+              },
+              "country": {
+                "type": "string",
+                "description": "The destination country by name, e.g. 'Saudi Arabia'. Salla also accepts a deprecated country_id; this tool takes the name so the agent never has to look an id up."
+              },
+              "city": {
+                "type": "string",
+                "description": "The destination city by name, e.g. 'Riyadh'. Salla also accepts a deprecated city_id; this tool takes the name."
+              },
+              "address_line": {
+                "type": "string",
+                "description": "The street address in full, as the courier should read it."
+              },
+              "street_number": {
+                "type": "string",
+                "description": "The street number of the destination address."
+              },
+              "block": {
+                "type": "string",
+                "description": "The block or building identifier of the destination address."
+              },
+              "postal_code": {
+                "type": "string",
+                "description": "The postal or ZIP code of the destination address."
+              },
+              "short_address": {
+                "type": "string",
+                "description": "The eight-character Saudi National Address short code, e.g. 'RIYD2929'. Saudi destinations only -- Salla requires it there since 5 January 2026."
+              },
+              "building_number": {
+                "type": "string",
+                "description": "The four-digit Saudi National Address building number. Saudi destinations only."
+              },
+              "additional_number": {
+                "type": "number",
+                "description": "The four-digit Saudi National Address additional number. Saudi destinations only."
+              }
+            },
+            "required": [
+              "name",
+              "phone",
+              "country",
+              "city",
+              "address_line"
+            ],
+            "additionalProperties": false
+          },
+          "orderId": {
+            "type": "integer",
+            "description": "The order this shipment fulfils. Set it whenever the shipment is for an order -- it is what makes the shipment and its tracking appear on that order for the merchant and the customer. Omit it only for a shipment that genuinely has no order behind it, such as samples or a stock transfer."
+          },
+          "cashOnDelivery": {
+            "type": "object",
+            "description": "How much the courier must collect from the customer on delivery. Set it when paymentMethod is 'cod'; leave it out for 'pre_paid', where the courier collects nothing.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "minimum": 0,
+                "description": "The sum to collect, normally the order's outstanding total."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the sum, e.g. 'SAR'."
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false
+          },
+          "shipFrom": {
+            "type": "object",
+            "description": "Which of the store's branches the courier collects from. Omit it to let Salla use the store's default pickup branch, which is the ordinary case; set it when the merchant names a specific warehouse or shop.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "branch"
+                ],
+                "description": "Always 'branch'. Salla also accepts a free-form pickup address, which this tool does not expose -- collection happens from a branch the store has registered."
+              },
+              "branch_id": {
+                "type": "integer",
+                "description": "The id of the branch to collect from, taken from list_branches. Salla rejects a branch id that is not the store's own."
+              }
+            },
+            "required": [
+              "type",
+              "branch_id"
+            ],
+            "additionalProperties": false
+          },
+          "description": {
+            "type": "string",
+            "description": "A short summary of what the shipment contains, for the courier's paperwork, e.g. 'Fashion apparel - 3 t-shirts'."
+          },
+          "remarks": {
+            "type": "string",
+            "description": "Delivery instructions for the courier, e.g. 'call before arriving' or 'deliver after 5 PM'. Pass on what the merchant or the order's notes actually say rather than composing instructions."
+          }
+        },
+        "required": [
+          "courierId",
+          "shipmentType",
+          "paymentMethod",
+          "packages",
+          "shipTo"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The new shipment's id. Hand it to get_shipment to confirm the shipment persisted, to track_shipment to follow the parcel, or to cancel_shipment to withdraw it."
+          },
+          "order_id": {
+            "type": "integer",
+            "description": "The order this shipment was booked against, echoing the orderId that was sent. Null when the shipment has no order behind it."
+          },
+          "status": {
+            "type": "string",
+            "description": "Where the shipment stands with the courier. A freshly created one is normally 'creating' or 'created' -- the courier has been asked but has not collected yet, so do not report the parcel as shipped on the strength of this call."
+          },
+          "courier_name": {
+            "type": "string",
+            "description": "The shipping company carrying the shipment, e.g. 'DHL'. Report this back rather than the courierId that was sent -- it is the name the merchant recognises."
+          },
+          "tracking_number": {
+            "type": "string",
+            "description": "The courier's tracking number for the parcel. Couriers often issue it asynchronously, so '0' or an empty value here means not yet assigned rather than a failure; get_shipment will have it once the courier responds."
+          },
+          "tracking_link": {
+            "type": "string",
+            "description": "The courier's tracking page for this parcel, ready to pass to the customer. Empty until the courier assigns a tracking number."
+          },
+          "total": {
+            "type": "object",
+            "description": "The declared value of everything in the shipment, as a money object. An amount of 0 means nothing was declared, not a free shipment.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The declared value."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the store, e.g. 'SAR'."
+              }
+            }
+          },
+          "cash_on_delivery": {
+            "type": "object",
+            "description": "What the courier will collect on delivery, as a money object. An amount of 0 means nothing is collected, which is the normal state of a pre_paid shipment.",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "description": "The sum the courier collects."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO currency code of the sum."
+              }
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "ui": {
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Card",
+            "child": "body"
+          },
+          {
+            "id": "body",
+            "component": "Column",
+            "children": [
+              "heading",
+              "courier",
+              "order",
+              "status",
+              "tracking",
+              "link",
+              "total",
+              "cod"
+            ]
+          },
+          {
+            "id": "heading",
+            "component": "Text",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "Shipment ${/id}"
+              },
+              "returnType": "string"
+            },
+            "variant": "h3"
+          },
+          {
+            "id": "courier",
+            "component": "Text",
+            "text": {
+              "path": "/courier_name"
+            },
+            "variant": "body"
+          },
+          {
+            "id": "order",
+            "component": "Text",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "order ${/order_id}"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "status",
+            "component": "Text",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "status: ${/status}"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "tracking",
+            "component": "Text",
+            "_comment": "A courier often assigns the tracking number asynchronously, so this renders as '0' or blank on a shipment booked seconds ago. That is the honest state, not a rendering fault.",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "tracking ${/tracking_number}"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "link",
+            "component": "Text",
+            "text": {
+              "path": "/tracking_link"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "total",
+            "component": "Text",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "/total/amount"
+                },
+                "currency": {
+                  "path": "/total/currency"
+                }
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "cod",
+            "component": "Text",
+            "_comment": "Shown for every shipment, not only COD ones: a pre_paid shipment reports 0 here, and seeing that zero is how a merchant confirms the courier will not ask the customer for money.",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "/cash_on_delivery/amount"
+                },
+                "currency": {
+                  "path": "/cash_on_delivery/currency"
+                }
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          }
+        ]
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "Create Shipment -- create a shipment related to the store. The same endpoint also creates return shipments and lets an Order Management app overwrite the pending shipment Salla generates at order creation; this tool exposes neither.",
+      "docsUrl": "https://docs.salla.dev/shipments/create",
+      "method": "POST",
+      "path": "/shipments",
+      "auth": {
+        "scopes": [
+          "shipping.read_write"
+        ]
+      },
+      "parameters": {
+        "body": {
+          "mode": "mapped",
+          "_comment": "Every object or array field below travels with its inner keys untouched, which is why interface.input.schema spells those keys the way Salla does.",
+          "fields": [
+            {
+              "name": "courier_id",
+              "from": "courierId",
+              "description": "The shipping company carrying the shipment."
+            },
+            {
+              "name": "shipment_type",
+              "from": "shipmentType",
+              "description": "Always 'shipment' -- returns are a different tool."
+            },
+            {
+              "name": "payment_method",
+              "from": "paymentMethod",
+              "description": "'cod' or 'pre_paid'."
+            },
+            {
+              "name": "packages",
+              "description": "The items the courier is carrying."
+            },
+            {
+              "name": "ship_to",
+              "from": "shipTo",
+              "description": "The destination address and recipient."
+            },
+            {
+              "name": "order_id",
+              "from": "orderId",
+              "description": "The order the shipment fulfils."
+            },
+            {
+              "name": "cash_on_delivery",
+              "from": "cashOnDelivery",
+              "description": "What the courier collects on delivery."
+            },
+            {
+              "name": "ship_from",
+              "from": "shipFrom",
+              "description": "The branch the courier collects from."
+            },
+            {
+              "name": "description",
+              "description": "A short summary of the shipment's contents."
+            },
+            {
+              "name": "remarks",
+              "description": "Delivery instructions for the courier."
+            }
+          ]
+        }
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": false,
+        "pagination": "none",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "fieldsPath": "error.fields",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the shipping.read_write scope, so no shipment was booked and the app's authorization has to be fixed before any can be."
+            },
+            {
+              "status": 422,
+              "meaning": "Salla rejected the shipment and booked nothing -- usually a courier the store has not enabled, a branch id that is not the store's own, or a destination address missing fields the courier requires (Saudi destinations need the National Address short_address, building_number and additional_number). The top-level message is a translation key like 'alert.invalid_fields' and is not worth relaying; read error.fields, which names each bad field with a human reason, and tell the merchant which value to correct."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 15000
+    }
+  },
+  "dependencies": [
+    {
+      "contract": "list_orders",
+      "reason": "orderId, and the recipient address and package lines that go with it, come from the order being shipped -- list_orders is where the agent finds the order the merchant is talking about"
+    },
+    {
+      "contract": "list_branches",
+      "reason": "shipFrom.branch_id must be one of the store's own branches, and list_branches is where those ids come from"
+    }
+  ],
+  "governance": {
+    "execution": {
+      "_comment": "propose-apply rather than direct: booking a shipment dispatches a real courier against a real address and bills the merchant for it, and Salla offers no way to undo it from this endpoint. The merchant sees the address, the packages and the COD amount before any of that happens.",
+      "mode": "propose-apply",
+      "humanApproval": "required"
+    },
+    "caching": {
+      "cacheable": false
+    }
+  }
+}
