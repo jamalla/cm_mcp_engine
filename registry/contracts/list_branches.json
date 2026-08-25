@@ -1,0 +1,295 @@
+{
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.0.0",
+  "kind": "single-tool",
+  "interface": {
+    "name": "list_branches",
+    "title": "List Store Branches",
+    "description": "Returns a paginated list of the store's branches and warehouses, each with its name, city, type, active status and whether it is the store's default branch.",
+    "whenToUse": [
+      "The merchant wants an overview of their physical locations, e.g. 'what branches do I have?' or 'list my warehouses'.",
+      "The merchant asks which branch is the default one used for operations -- filter with the isDefault argument.",
+      "The merchant asks whether a branch in a particular place still exists, e.g. 'do I have a Jeddah branch?' -- filter with the keyword argument.",
+      "An agent needs a branch id before reading one specific branch, or before reporting stock or sales per location."
+    ],
+    "whenNotToUse": [
+      "The merchant named ONE specific branch and wants its full record -- working hours, contacts, full address -- use get_branch with the branch id instead.",
+      "The merchant wants to open a branch, rename one, or change its address or working hours -- use create_branch or update_branch; this tool only reads.",
+      "The merchant wants the stock held at a location rather than the locations themselves -- use list_product_quantities filtered by branch instead."
+    ],
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "input": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Pagination page number. The response returns one page of branches; increment to fetch the rest."
+          },
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Filter branches to those matching this keyword, typically part of the branch name."
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "Filter to the store's default branch (true) or to the non-default ones (false). Omit to list every branch."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "response": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The branch id, used by sibling branch tools and by per-location reporting."
+          },
+          "name": {
+            "type": "string",
+            "description": "The branch's display name, in the store's own language."
+          },
+          "type": {
+            "type": "string",
+            "description": "What the location is: 'branch' (a place customers can reach) or 'warehouse'."
+          },
+          "status": {
+            "type": "string",
+            "description": "Whether the branch is 'active' or 'inactive' for the store's operations."
+          },
+          "is_default": {
+            "type": "boolean",
+            "description": "True for the branch the store falls back to for its operations."
+          },
+          "city": {
+            "type": "object",
+            "description": "The city the branch sits in.",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "The city id, as Salla identifies it."
+              },
+              "name": {
+                "type": "string",
+                "description": "The city name in the store's language."
+              },
+              "name_en": {
+                "type": "string",
+                "description": "The city name in English."
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ui": {
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "heading",
+              "header",
+              "rule",
+              "rows"
+            ]
+          },
+          {
+            "id": "heading",
+            "component": "Text",
+            "variant": "h4",
+            "text": {
+              "call": "pluralize",
+              "args": {
+                "value": {
+                  "path": "/count"
+                },
+                "one": "1 branch",
+                "other": "${/count} branches"
+              },
+              "returnType": "string"
+            }
+          },
+          {
+            "id": "header",
+            "component": "Row",
+            "align": "center",
+            "children": [
+              "header_name",
+              "header_city",
+              "header_type",
+              "header_status"
+            ]
+          },
+          {
+            "id": "header_name",
+            "component": "Text",
+            "text": "Branch",
+            "variant": "caption",
+            "weight": 3
+          },
+          {
+            "id": "header_city",
+            "component": "Text",
+            "text": "City",
+            "variant": "caption",
+            "weight": 2
+          },
+          {
+            "id": "header_type",
+            "component": "Text",
+            "text": "Type",
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "header_status",
+            "component": "Text",
+            "text": "Status",
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "rule",
+            "component": "Divider"
+          },
+          {
+            "id": "rows",
+            "component": "List",
+            "children": {
+              "componentId": "row",
+              "path": "/items"
+            }
+          },
+          {
+            "id": "row",
+            "component": "Row",
+            "align": "center",
+            "children": [
+              "row_name",
+              "row_city",
+              "row_type",
+              "row_status"
+            ]
+          },
+          {
+            "id": "row_name",
+            "component": "Text",
+            "text": {
+              "path": "name"
+            },
+            "weight": 3
+          },
+          {
+            "id": "row_city",
+            "component": "Text",
+            "_comment": "The city in the store's own language, so it reads beside the branch name rather than against it.",
+            "text": {
+              "path": "city/name"
+            },
+            "weight": 2
+          },
+          {
+            "id": "row_type",
+            "component": "Text",
+            "text": {
+              "path": "type"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "row_status",
+            "component": "Text",
+            "text": {
+              "path": "status"
+            },
+            "variant": "caption",
+            "weight": 1
+          }
+        ]
+      }
+    }
+  },
+  "binding": {
+    "type": "http",
+    "http": {
+      "api": "salla",
+      "summary": "List Branches -- list all branches related to your store, filterable by a keyword or by whether the branch is the store's default one.",
+      "docsUrl": "https://docs.salla.dev/branches/list",
+      "method": "GET",
+      "path": "/branches",
+      "auth": {
+        "scopes": [
+          "branches.read"
+        ]
+      },
+      "parameters": {
+        "query": [
+          {
+            "name": "page",
+            "description": "The pagination page number."
+          },
+          {
+            "name": "keyword",
+            "description": "A keyword to search the store's branches by."
+          },
+          {
+            "name": "is_default",
+            "from": "isDefault",
+            "description": "Whether or not this branch is the default one for all operations."
+          }
+        ]
+      },
+      "response": {
+        "dataPath": "data",
+        "collection": true,
+        "pagination": "standard",
+        "successStatuses": [
+          200
+        ],
+        "errors": {
+          "messagePath": "error.message",
+          "statuses": [
+            {
+              "status": 401,
+              "meaning": "The store's access token is missing, expired, or does not carry the branches.read scope, so the store's branches cannot be read until the app's authorization is fixed."
+            }
+          ]
+        }
+      },
+      "timeoutMs": 10000
+    }
+  },
+  "dependencies": [],
+  "governance": {
+    "execution": {
+      "mode": "direct",
+      "humanApproval": "never"
+    },
+    "caching": {
+      "_comment": "A store's branches are near-static configuration -- opening or closing one is a deliberate act a merchant performs rarely -- so a longer TTL is safe and spares the upstream a call per question about locations.",
+      "cacheable": true,
+      "keyBy": [
+        "page",
+        "keyword",
+        "isDefault"
+      ],
+      "ttlSeconds": 600
+    }
+  }
+}
