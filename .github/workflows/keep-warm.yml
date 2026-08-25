@@ -1,0 +1,44 @@
+name: keep-warm
+
+# Pings the free-tier Render services so they don't spin down after 15 min idle.
+#
+# Window: 01:00-12:50 UTC == 09:00-20:50 Asia/Singapore (~12h/day).
+# Why not 24/7: a Render workspace gets 750 free instance-hours per MONTH.
+# Two services warm 24/7 = ~1460h, which suspends ALL free services mid-month.
+# 12h/day x 2 services x 30 days = ~720h, just under the cap.
+#
+# This same file lives in BOTH cm_mcp_engine and cm_mcp_agent, and each copy
+# pings BOTH services. That is deliberate, not a mistake: GitHub's cron is
+# best-effort and can run late, so two independent schedules make a long gap
+# less likely. It does not cost extra instance-hours -- Render bills wall-clock
+# uptime, not requests, and the services are up for the same 12h either way.
+
+on:
+  schedule:
+    - cron: '*/10 1-12 * * *'
+  workflow_dispatch:        # lets you warm things up by hand before a demo
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        url:
+          - https://cm-mcp-engine.onrender.com
+          - https://cm-mcp-agent.onrender.com
+    steps:
+      - name: Ping ${{ matrix.url }}
+        run: |
+          # A cold start takes ~50-60s, so allow plenty of time.
+          # Any HTTP response counts as inbound traffic and resets the idle
+          # timer, so 404 is a success here (the engine's root legitimately
+          # 404s) -- only a dead connection is a real failure.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+                   --connect-timeout 15 --max-time 180 --retry 2 --retry-delay 10 \
+                   "${{ matrix.url }}")
+          echo "${{ matrix.url }} -> HTTP $code"
+          if [ "$code" = "000" ]; then
+            echo "::error::no response from ${{ matrix.url }}"
+            exit 1
+          fi
