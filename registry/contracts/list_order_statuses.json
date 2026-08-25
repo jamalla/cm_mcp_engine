@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v2.json",
-  "contractVersion": "1.0.0",
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.1.0",
   "kind": "single-tool",
   "interface": {
     "name": "list_order_statuses",
@@ -90,8 +90,68 @@
         ]
       },
       "ui": {
-        "display": "table",
-        "title": "Order Statuses"
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "heading",
+              "rows"
+            ]
+          },
+          {
+            "id": "heading",
+            "component": "Text",
+            "text": {
+              "call": "pluralize",
+              "args": {
+                "value": {
+                  "path": "/count"
+                },
+                "one": "1 order status",
+                "other": "${/count} order statuses"
+              },
+              "returnType": "string"
+            },
+            "variant": "h4"
+          },
+          {
+            "id": "rows",
+            "component": "List",
+            "children": {
+              "componentId": "row",
+              "path": "/items"
+            }
+          },
+          {
+            "id": "row",
+            "component": "Row",
+            "children": [
+              "row_name",
+              "row_type"
+            ],
+            "justify": "spaceBetween"
+          },
+          {
+            "id": "row_name",
+            "component": "Text",
+            "text": {
+              "path": "name"
+            },
+            "weight": 3
+          },
+          {
+            "id": "row_type",
+            "component": "Text",
+            "_comment": "type separates Salla's own statuses from the merchant's custom ones.",
+            "text": {
+              "path": "type"
+            },
+            "variant": "caption",
+            "weight": 1
+          }
+        ]
       }
     }
   },

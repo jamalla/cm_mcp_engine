@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v2.json",
-  "contractVersion": "1.0.0",
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.1.0",
   "kind": "single-tool",
   "interface": {
     "name": "get_product",
@@ -211,10 +211,82 @@
         ]
       },
       "ui": {
-        "display": "card",
-        "title": "{name}",
-        "primary": "{sku}",
-        "secondary": "{status}"
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Card",
+            "child": "body"
+          },
+          {
+            "id": "body",
+            "component": "Column",
+            "children": [
+              "name",
+              "sku",
+              "price",
+              "stock",
+              "divider",
+              "description"
+            ]
+          },
+          {
+            "id": "name",
+            "component": "Text",
+            "text": {
+              "path": "/name"
+            },
+            "variant": "h3"
+          },
+          {
+            "id": "sku",
+            "component": "Text",
+            "text": {
+              "path": "/sku"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "price",
+            "component": "Text",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "/price/amount"
+                },
+                "currency": {
+                  "path": "/price/currency"
+                }
+              },
+              "returnType": "string"
+            }
+          },
+          {
+            "id": "stock",
+            "component": "Text",
+            "_comment": "quantity, not status: a product holding no stock can still read 'sale'.",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "${/quantity} in stock"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "divider",
+            "component": "Divider"
+          },
+          {
+            "id": "description",
+            "component": "Text",
+            "text": {
+              "path": "/description"
+            }
+          }
+        ]
       }
     }
   },

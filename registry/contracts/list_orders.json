@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v2.json",
-  "contractVersion": "3.0.0",
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "3.1.0",
   "kind": "single-tool",
   "interface": {
     "name": "list_orders",
@@ -168,8 +168,103 @@
         ]
       },
       "ui": {
-        "display": "table",
-        "title": "Store Orders"
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "heading",
+              "rows"
+            ]
+          },
+          {
+            "id": "heading",
+            "component": "Text",
+            "text": {
+              "call": "pluralize",
+              "args": {
+                "value": {
+                  "path": "/count"
+                },
+                "one": "1 order",
+                "other": "${/count} orders"
+              },
+              "returnType": "string"
+            },
+            "variant": "h4"
+          },
+          {
+            "id": "rows",
+            "component": "List",
+            "children": {
+              "componentId": "row",
+              "path": "/items"
+            }
+          },
+          {
+            "id": "row",
+            "component": "Row",
+            "children": [
+              "row_ref",
+              "row_customer",
+              "row_status",
+              "row_total"
+            ],
+            "justify": "spaceBetween"
+          },
+          {
+            "id": "row_ref",
+            "component": "Text",
+            "_comment": "reference_id is the number the merchant sees in their dashboard; id is the API's.",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "#${reference_id}"
+              },
+              "returnType": "string"
+            },
+            "weight": 1
+          },
+          {
+            "id": "row_customer",
+            "component": "Text",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "${customer/first_name} ${customer/last_name}"
+              },
+              "returnType": "string"
+            },
+            "weight": 2
+          },
+          {
+            "id": "row_status",
+            "component": "Text",
+            "text": {
+              "path": "status/name"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "row_total",
+            "component": "Text",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "total/amount"
+                },
+                "currency": {
+                  "path": "total/currency"
+                }
+              },
+              "returnType": "string"
+            },
+            "weight": 1
+          }
+        ]
       }
     }
   },
