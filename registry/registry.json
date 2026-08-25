@@ -1,13 +1,14 @@
 {
-  "generatedAt": "2026-08-25T09:06:50+00:00",
+  "generatedAt": "2026-08-25T15:50:25+00:00",
   "sourceRepo": "cm_mcp_contracts",
-  "sourceCommit": "1bf7648b55047882f0c165e59cfd95955b2da318",
+  "sourceCommit": "ae97ba41c7678f9f1d2c2ec9f9087edee561b25b",
   "schemaId": "https://contract-mcp.example/schemas/tool-contract.v3.json",
   "layout": "index",
-  "contentHash": "06f52d724466a2629239c6971e20d1bac0817c368a7957a951cd34fefda5c044",
-  "toolCount": 9,
+  "contentHash": "7f1e6ded167b37e76d4548707df615483d3ae7a7fb4e4388e99d28b0414106a7",
+  "toolCount": 10,
   "toolNames": [
     "create_coupon",
+    "create_shipment",
     "get_product",
     "list_branches",
     "list_brands",
@@ -23,6 +24,12 @@
       "version": "1.1.1",
       "path": "contracts/create_coupon.json",
       "sha256": "cf57540f7e258571d4946ccf3bd3c71b34b3e5ebaa0074989d059bd6a4bf4fe6"
+    },
+    {
+      "name": "create_shipment",
+      "version": "1.0.0",
+      "path": "contracts/create_shipment.json",
+      "sha256": "11478e795af9f685e8f69bf0052a792ff1611e2a44ad4df8851bd37396bf6565"
     },
     {
       "name": "get_product",
