@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v2.json",
-  "contractVersion": "1.0.1",
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.1.0",
   "kind": "single-tool",
   "interface": {
     "name": "list_products",
@@ -101,8 +101,91 @@
         ]
       },
       "ui": {
-        "display": "table",
-        "title": "Store Products"
+        "catalogId": "a2ui.org:basic",
+        "_comment": "A row per product. Paths inside the template are RELATIVE -- `name`, not `/name` -- because the List instantiates it once per item in /items.",
+        "components": [
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "heading",
+              "rows"
+            ]
+          },
+          {
+            "id": "heading",
+            "component": "Text",
+            "text": {
+              "call": "pluralize",
+              "args": {
+                "value": {
+                  "path": "/count"
+                },
+                "one": "1 product",
+                "other": "${/count} products"
+              },
+              "returnType": "string"
+            },
+            "variant": "h4"
+          },
+          {
+            "id": "rows",
+            "component": "List",
+            "children": {
+              "componentId": "row",
+              "path": "/items"
+            }
+          },
+          {
+            "id": "row",
+            "component": "Row",
+            "children": [
+              "row_name",
+              "row_stock",
+              "row_price"
+            ],
+            "justify": "spaceBetween"
+          },
+          {
+            "id": "row_name",
+            "component": "Text",
+            "text": {
+              "path": "name"
+            },
+            "weight": 3
+          },
+          {
+            "id": "row_stock",
+            "component": "Text",
+            "_comment": "quantity, not status: 'sale' can still mean nothing left.",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "${quantity} left"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "row_price",
+            "component": "Text",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "price/amount"
+                },
+                "currency": {
+                  "path": "price/currency"
+                }
+              },
+              "returnType": "string"
+            },
+            "weight": 1
+          }
+        ]
       }
     }
   },

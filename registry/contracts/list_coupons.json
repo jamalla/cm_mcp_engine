@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v2.json",
-  "contractVersion": "1.0.0",
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.1.0",
   "kind": "single-tool",
   "interface": {
     "name": "list_coupons",
@@ -173,8 +173,102 @@
         ]
       },
       "ui": {
-        "display": "table",
-        "title": "Store Coupons"
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "heading",
+              "rows"
+            ]
+          },
+          {
+            "id": "heading",
+            "component": "Text",
+            "text": {
+              "call": "pluralize",
+              "args": {
+                "value": {
+                  "path": "/count"
+                },
+                "one": "1 coupon",
+                "other": "${/count} coupons"
+              },
+              "returnType": "string"
+            },
+            "variant": "h4"
+          },
+          {
+            "id": "rows",
+            "component": "List",
+            "children": {
+              "componentId": "row",
+              "path": "/items"
+            }
+          },
+          {
+            "id": "row",
+            "component": "Row",
+            "children": [
+              "row_code",
+              "row_amount",
+              "row_expiry",
+              "row_status"
+            ],
+            "justify": "spaceBetween"
+          },
+          {
+            "id": "row_code",
+            "component": "Text",
+            "text": {
+              "path": "code"
+            },
+            "weight": 2
+          },
+          {
+            "id": "row_amount",
+            "component": "Text",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "amount/amount"
+                },
+                "currency": {
+                  "path": "amount/currency"
+                }
+              },
+              "returnType": "string"
+            },
+            "weight": 1
+          },
+          {
+            "id": "row_expiry",
+            "component": "Text",
+            "text": {
+              "call": "formatDate",
+              "args": {
+                "value": {
+                  "path": "expiry_date"
+                },
+                "format": "MMM d, yyyy"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "row_status",
+            "component": "Text",
+            "text": {
+              "path": "status"
+            },
+            "variant": "caption",
+            "weight": 1
+          }
+        ]
       }
     }
   },

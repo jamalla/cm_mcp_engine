@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v2.json",
-  "contractVersion": "1.0.0",
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.1.0",
   "kind": "single-tool",
   "interface": {
     "name": "list_categories",
@@ -87,8 +87,67 @@
         ]
       },
       "ui": {
-        "display": "table",
-        "title": "Store Categories"
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Column",
+            "children": [
+              "heading",
+              "rows"
+            ]
+          },
+          {
+            "id": "heading",
+            "component": "Text",
+            "text": {
+              "call": "pluralize",
+              "args": {
+                "value": {
+                  "path": "/count"
+                },
+                "one": "1 category",
+                "other": "${/count} categories"
+              },
+              "returnType": "string"
+            },
+            "variant": "h4"
+          },
+          {
+            "id": "rows",
+            "component": "List",
+            "children": {
+              "componentId": "row",
+              "path": "/items"
+            }
+          },
+          {
+            "id": "row",
+            "component": "Row",
+            "children": [
+              "row_name",
+              "row_status"
+            ],
+            "justify": "spaceBetween"
+          },
+          {
+            "id": "row_name",
+            "component": "Text",
+            "text": {
+              "path": "name"
+            },
+            "weight": 3
+          },
+          {
+            "id": "row_status",
+            "component": "Text",
+            "text": {
+              "path": "status"
+            },
+            "variant": "caption",
+            "weight": 1
+          }
+        ]
       }
     }
   },

@@ -1,6 +1,6 @@
 {
-  "$schema": "../schema/tool-contract.v2.json",
-  "contractVersion": "1.0.0",
+  "$schema": "../schema/tool-contract.v3.json",
+  "contractVersion": "1.1.0",
   "kind": "single-tool",
   "interface": {
     "name": "create_coupon",
@@ -163,10 +163,69 @@
         ]
       },
       "ui": {
-        "display": "card",
-        "title": "Coupon {code}",
-        "primary": "{type}",
-        "secondary": "{expiry_date}"
+        "catalogId": "a2ui.org:basic",
+        "components": [
+          {
+            "id": "root",
+            "component": "Card",
+            "child": "body"
+          },
+          {
+            "id": "body",
+            "component": "Column",
+            "children": [
+              "code",
+              "discount",
+              "window",
+              "status"
+            ]
+          },
+          {
+            "id": "code",
+            "component": "Text",
+            "_comment": "The code Salla stored, which is what the merchant hands to customers.",
+            "text": {
+              "path": "/code"
+            },
+            "variant": "h3"
+          },
+          {
+            "id": "discount",
+            "component": "Text",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "/amount/amount"
+                },
+                "currency": {
+                  "path": "/amount/currency"
+                }
+              },
+              "returnType": "string"
+            }
+          },
+          {
+            "id": "window",
+            "component": "Text",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "Valid until ${formatDate(value:${/expiry_date}, format:'MMM d, yyyy')}"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "status",
+            "component": "Text",
+            "text": {
+              "path": "/status"
+            },
+            "variant": "caption"
+          }
+        ]
       }
     }
   },
