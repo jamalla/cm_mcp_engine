@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/tool-contract.v3.json",
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.1.1",
   "kind": "single-tool",
   "interface": {
     "name": "list_coupons",
@@ -186,6 +186,7 @@
           {
             "id": "heading",
             "component": "Text",
+            "variant": "h4",
             "text": {
               "call": "pluralize",
               "args": {
@@ -196,8 +197,7 @@
                 "other": "${/count} coupons"
               },
               "returnType": "string"
-            },
-            "variant": "h4"
+            }
           },
           {
             "id": "rows",
@@ -210,13 +210,15 @@
           {
             "id": "row",
             "component": "Row",
+            "justify": "spaceBetween",
             "children": [
               "row_code",
               "row_amount",
+              "row_type",
+              "row_used",
               "row_expiry",
               "row_status"
-            ],
-            "justify": "spaceBetween"
+            ]
           },
           {
             "id": "row_code",
@@ -230,17 +232,37 @@
             "id": "row_amount",
             "component": "Text",
             "text": {
-              "call": "formatCurrency",
+              "call": "formatNumber",
               "args": {
                 "value": {
                   "path": "amount/amount"
-                },
-                "currency": {
-                  "path": "amount/currency"
                 }
               },
               "returnType": "string"
             },
+            "weight": 1,
+            "_comment": "Deliberately NOT formatCurrency: Salla wraps a percentage in a money object too, so a 10% coupon would render as 'SAR 10'. The number is shown plainly and the type beside it says which kind of discount it is."
+          },
+          {
+            "id": "row_type",
+            "component": "Text",
+            "text": {
+              "path": "type"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "row_used",
+            "component": "Text",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "${statistics/num_of_usage} used"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption",
             "weight": 1
           },
           {

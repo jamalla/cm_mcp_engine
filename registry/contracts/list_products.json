@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/tool-contract.v3.json",
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.1.1",
   "kind": "single-tool",
   "interface": {
     "name": "list_products",
@@ -102,7 +102,6 @@
       },
       "ui": {
         "catalogId": "a2ui.org:basic",
-        "_comment": "A row per product. Paths inside the template are RELATIVE -- `name`, not `/name` -- because the List instantiates it once per item in /items.",
         "components": [
           {
             "id": "root",
@@ -115,6 +114,7 @@
           {
             "id": "heading",
             "component": "Text",
+            "variant": "h4",
             "text": {
               "call": "pluralize",
               "args": {
@@ -125,8 +125,7 @@
                 "other": "${/count} products"
               },
               "returnType": "string"
-            },
-            "variant": "h4"
+            }
           },
           {
             "id": "rows",
@@ -139,12 +138,14 @@
           {
             "id": "row",
             "component": "Row",
+            "justify": "spaceBetween",
             "children": [
               "row_name",
+              "row_sku",
+              "row_status",
               "row_stock",
               "row_price"
-            ],
-            "justify": "spaceBetween"
+            ]
           },
           {
             "id": "row_name",
@@ -155,9 +156,27 @@
             "weight": 3
           },
           {
+            "id": "row_sku",
+            "component": "Text",
+            "text": {
+              "path": "sku"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "row_status",
+            "component": "Text",
+            "variant": "caption",
+            "weight": 1,
+            "_comment": "Shown beside stock, never instead of it: 'sale' can still mean none left.",
+            "text": {
+              "path": "status"
+            }
+          },
+          {
             "id": "row_stock",
             "component": "Text",
-            "_comment": "quantity, not status: 'sale' can still mean nothing left.",
             "text": {
               "call": "formatString",
               "args": {

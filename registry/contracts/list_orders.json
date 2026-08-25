@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/tool-contract.v3.json",
-  "contractVersion": "3.1.0",
+  "contractVersion": "3.1.1",
   "kind": "single-tool",
   "interface": {
     "name": "list_orders",
@@ -181,6 +181,7 @@
           {
             "id": "heading",
             "component": "Text",
+            "variant": "h4",
             "text": {
               "call": "pluralize",
               "args": {
@@ -191,8 +192,7 @@
                 "other": "${/count} orders"
               },
               "returnType": "string"
-            },
-            "variant": "h4"
+            }
           },
           {
             "id": "rows",
@@ -205,25 +205,43 @@
           {
             "id": "row",
             "component": "Row",
+            "justify": "spaceBetween",
             "children": [
               "row_ref",
+              "row_date",
               "row_customer",
               "row_status",
+              "row_payment",
               "row_total"
-            ],
-            "justify": "spaceBetween"
+            ]
           },
           {
             "id": "row_ref",
             "component": "Text",
-            "_comment": "reference_id is the number the merchant sees in their dashboard; id is the API's.",
+            "weight": 1,
+            "_comment": "reference_id is the number the merchant sees in their dashboard.",
             "text": {
               "call": "formatString",
               "args": {
                 "value": "#${reference_id}"
               },
               "returnType": "string"
+            }
+          },
+          {
+            "id": "row_date",
+            "component": "Text",
+            "text": {
+              "call": "formatDate",
+              "args": {
+                "value": {
+                  "path": "date/date"
+                },
+                "format": "MMM d"
+              },
+              "returnType": "string"
             },
+            "variant": "caption",
             "weight": 1
           },
           {
@@ -243,6 +261,15 @@
             "component": "Text",
             "text": {
               "path": "status/name"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "row_payment",
+            "component": "Text",
+            "text": {
+              "path": "payment_method"
             },
             "variant": "caption",
             "weight": 1

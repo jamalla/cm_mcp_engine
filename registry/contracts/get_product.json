@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/tool-contract.v3.json",
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.1.1",
   "kind": "single-tool",
   "interface": {
     "name": "get_product",
@@ -224,10 +224,20 @@
             "children": [
               "name",
               "sku",
-              "price",
+              "headline",
               "stock",
-              "divider",
-              "description"
+              "links",
+              "d1",
+              "description",
+              "d2",
+              "cats_label",
+              "cats",
+              "d3",
+              "opts_label",
+              "opts",
+              "d4",
+              "variants_label",
+              "variants"
             ]
           },
           {
@@ -247,6 +257,15 @@
             "variant": "caption"
           },
           {
+            "id": "headline",
+            "component": "Row",
+            "children": [
+              "price",
+              "sale_price",
+              "status"
+            ]
+          },
+          {
             "id": "price",
             "component": "Text",
             "text": {
@@ -263,6 +282,27 @@
             }
           },
           {
+            "id": "sale_price",
+            "component": "Text",
+            "_comment": "0 means no sale price is set, which the response schema spells out.",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "on sale ${/sale_price/amount}"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "status",
+            "component": "Text",
+            "text": {
+              "path": "/status"
+            },
+            "variant": "caption"
+          },
+          {
             "id": "stock",
             "component": "Text",
             "_comment": "quantity, not status: a product holding no stock can still read 'sale'.",
@@ -276,7 +316,15 @@
             "variant": "caption"
           },
           {
-            "id": "divider",
+            "id": "links",
+            "component": "Text",
+            "text": {
+              "path": "/urls/customer"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "d1",
             "component": "Divider"
           },
           {
@@ -285,6 +333,127 @@
             "text": {
               "path": "/description"
             }
+          },
+          {
+            "id": "d2",
+            "component": "Divider"
+          },
+          {
+            "id": "cats_label",
+            "component": "Text",
+            "text": "Categories",
+            "variant": "h5"
+          },
+          {
+            "id": "cats",
+            "component": "List",
+            "children": {
+              "componentId": "cat",
+              "path": "/categories"
+            },
+            "direction": "horizontal"
+          },
+          {
+            "id": "cat",
+            "component": "Text",
+            "text": {
+              "path": "name"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "d3",
+            "component": "Divider"
+          },
+          {
+            "id": "opts_label",
+            "component": "Text",
+            "text": "Options",
+            "variant": "h5"
+          },
+          {
+            "id": "opts",
+            "component": "List",
+            "children": {
+              "componentId": "opt",
+              "path": "/options"
+            },
+            "direction": "horizontal"
+          },
+          {
+            "id": "opt",
+            "component": "Text",
+            "text": {
+              "path": "name"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "d4",
+            "component": "Divider"
+          },
+          {
+            "id": "variants_label",
+            "component": "Text",
+            "text": "Variants",
+            "variant": "h5"
+          },
+          {
+            "id": "variants",
+            "component": "List",
+            "children": {
+              "componentId": "variant",
+              "path": "/skus"
+            }
+          },
+          {
+            "id": "variant",
+            "component": "Row",
+            "children": [
+              "v_sku",
+              "v_stock",
+              "v_price"
+            ],
+            "justify": "spaceBetween"
+          },
+          {
+            "id": "v_sku",
+            "component": "Text",
+            "text": {
+              "path": "sku"
+            },
+            "weight": 2
+          },
+          {
+            "id": "v_stock",
+            "component": "Text",
+            "_comment": "Per-variant stock: this is the number to quote when one size has sold out.",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "${stock_quantity} left"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption",
+            "weight": 1
+          },
+          {
+            "id": "v_price",
+            "component": "Text",
+            "text": {
+              "call": "formatCurrency",
+              "args": {
+                "value": {
+                  "path": "price/amount"
+                },
+                "currency": {
+                  "path": "price/currency"
+                }
+              },
+              "returnType": "string"
+            },
+            "weight": 1
           }
         ]
       }

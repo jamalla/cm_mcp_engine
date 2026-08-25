@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-25T03:45:30+00:00",
+  "generatedAt": "2026-08-25T04:40:05+00:00",
   "sourceRepo": "cm_mcp_contracts",
-  "sourceCommit": "e1fb5d0bfe2b7eecbd568e2e359d5ce725a1eae6",
+  "sourceCommit": "0e3632bfb50989c3ab93c6894f8f46649cd3aed4",
   "schemaId": "https://contract-mcp.example/schemas/tool-contract.v3.json",
   "layout": "index",
-  "contentHash": "e62f41e5aca62480cc2fcc68dc541bbb810a55d5fbc17ee10f92b27d3e4ea715",
+  "contentHash": "c0a77dbc2bd823cc43ce97f224738ba466b704c07d862a891ad04a4b6f09aceb",
   "toolCount": 8,
   "toolNames": [
     "create_coupon",
@@ -19,15 +19,15 @@
   "contracts": [
     {
       "name": "create_coupon",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "path": "contracts/create_coupon.json",
-      "sha256": "69ed17c7709c79db37ce9087926801446e221ebcc612bdc01b04df4bf0162ae6"
+      "sha256": "cf57540f7e258571d4946ccf3bd3c71b34b3e5ebaa0074989d059bd6a4bf4fe6"
     },
     {
       "name": "get_product",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "path": "contracts/get_product.json",
-      "sha256": "27a070db9f51a6547858a4e5e8928ca239caaa1c78d21da2e7dfdce5d405e8a7"
+      "sha256": "6f216fe2dfaf865cdef5d18316e81527009997f2d9fefa79efa30e35e587c15e"
     },
     {
       "name": "list_brands",
@@ -37,33 +37,33 @@
     },
     {
       "name": "list_categories",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "path": "contracts/list_categories.json",
-      "sha256": "7b47c7357c776df07797bac0e4118ca0b62ec6a3b97940fae5f373d798c7f8c1"
+      "sha256": "58967d290e173d9707b8b0603d8802cf1db64ef801b996d9b04d491f17ccc2ec"
     },
     {
       "name": "list_coupons",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "path": "contracts/list_coupons.json",
-      "sha256": "eb8553d0542101876e62205684c9b35009acd33914311c456ad3ac4852b71837"
+      "sha256": "71352f53d4ebbb57a50349cc36ec33c5c5946e9a1377b8cc32b96672bb09a9a2"
     },
     {
       "name": "list_order_statuses",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "path": "contracts/list_order_statuses.json",
-      "sha256": "90f0056b0183348f88a141ee317a2b08641874f12b3f2f701d128797b405d5b4"
+      "sha256": "7b1863871dc5b549416a3a6b18824601ce7d59123d81059237a08ca72e542f1c"
     },
     {
       "name": "list_orders",
-      "version": "3.1.0",
+      "version": "3.1.1",
       "path": "contracts/list_orders.json",
-      "sha256": "00642321694b1cf87149698e8dd608d0ca0054d40e74c3aa57af646dda6bf06d"
+      "sha256": "01eaba2c1dab29a2714839563a617c49a9c794e652d380ac395cc7d7aa8f146a"
     },
     {
       "name": "list_products",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "path": "contracts/list_products.json",
-      "sha256": "e8a353384680cfd20f643486ad8567c1b163aa79515651177716c99f3bf8e482"
+      "sha256": "be9fdb8665f57d633d6108412d3eae04ae5efd5944c02afeb9d574bb9d7445d8"
     }
   ]
 }
