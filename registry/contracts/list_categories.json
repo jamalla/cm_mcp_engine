@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/tool-contract.v3.json",
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.1.1",
   "kind": "single-tool",
   "interface": {
     "name": "list_categories",
@@ -100,6 +100,7 @@
           {
             "id": "heading",
             "component": "Text",
+            "variant": "h4",
             "text": {
               "call": "pluralize",
               "args": {
@@ -110,8 +111,7 @@
                 "other": "${/count} categories"
               },
               "returnType": "string"
-            },
-            "variant": "h4"
+            }
           },
           {
             "id": "rows",
@@ -124,11 +124,20 @@
           {
             "id": "row",
             "component": "Row",
+            "align": "center",
             "children": [
+              "row_image",
               "row_name",
               "row_status"
-            ],
-            "justify": "spaceBetween"
+            ]
+          },
+          {
+            "id": "row_image",
+            "component": "Image",
+            "_comment": "Nullable: a category with no image renders nothing here.",
+            "url": {
+              "path": "image"
+            }
           },
           {
             "id": "row_name",

@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/tool-contract.v3.json",
-  "contractVersion": "1.1.0",
+  "contractVersion": "1.1.1",
   "kind": "single-tool",
   "interface": {
     "name": "create_coupon",
@@ -176,14 +176,16 @@
             "children": [
               "code",
               "discount",
-              "window",
+              "cap",
+              "starts",
+              "expires",
+              "shipping",
               "status"
             ]
           },
           {
             "id": "code",
             "component": "Text",
-            "_comment": "The code Salla stored, which is what the merchant hands to customers.",
             "text": {
               "path": "/code"
             },
@@ -191,27 +193,81 @@
           },
           {
             "id": "discount",
+            "component": "Row",
+            "children": [
+              "amount",
+              "type"
+            ]
+          },
+          {
+            "id": "amount",
             "component": "Text",
             "text": {
-              "call": "formatCurrency",
+              "call": "formatNumber",
               "args": {
                 "value": {
                   "path": "/amount/amount"
-                },
-                "currency": {
-                  "path": "/amount/currency"
                 }
+              },
+              "returnType": "string"
+            },
+            "_comment": "Deliberately NOT formatCurrency: Salla wraps a percentage in a money object too, so a 10% coupon would render as 'SAR 10'. The number is shown plainly and the type beside it says which kind of discount it is."
+          },
+          {
+            "id": "type",
+            "component": "Text",
+            "text": {
+              "path": "/type"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "cap",
+            "component": "Text",
+            "variant": "caption",
+            "_comment": "An amount of 0 means no cap was set, not a coupon worth nothing.",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "cap ${/maximum_amount/amount}"
               },
               "returnType": "string"
             }
           },
           {
-            "id": "window",
+            "id": "starts",
             "component": "Text",
             "text": {
               "call": "formatString",
               "args": {
-                "value": "Valid until ${formatDate(value:${/expiry_date}, format:'MMM d, yyyy')}"
+                "value": "starts ${/start_date}"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "expires",
+            "component": "Text",
+            "text": {
+              "call": "formatDate",
+              "args": {
+                "value": {
+                  "path": "/expiry_date"
+                },
+                "format": "MMM d, yyyy"
+              },
+              "returnType": "string"
+            },
+            "variant": "caption"
+          },
+          {
+            "id": "shipping",
+            "component": "Text",
+            "text": {
+              "call": "formatString",
+              "args": {
+                "value": "free shipping: ${/free_shipping}"
               },
               "returnType": "string"
             },
